@@ -339,8 +339,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // Which account the open sign-in window belongs to.
     private var loginAccount: Account?
 
+    // With no account named (the popover's Sign In, the menu's "Sign in to
+    // Claude…"), the one to sign in is whichever is waiting on it.
     func showLoginWindow(for account: Account? = nil) {
-        loginAccount = account ?? AccountStore.shared.accounts.first
+        let target = account ?? viewModel.pendingLogins.first ?? AccountStore.shared.accounts.first
+        // The window is bound to one account's cookie jar. Asked for another
+        // while it's open, replace it rather than bring the old one forward —
+        // otherwise the sign-in lands in one jar and is credited to the other.
+        // Closing runs windowWillClose, which clears loginWindow.
+        if loginWindow != nil, loginAccount?.id != target?.id {
+            loginWindow?.close()
+        }
+        loginAccount = target
         // Become a regular app while signing in: this gives a Dock icon (click it
         // to bring the window back if it slips behind your browser) and reliable
         // mouse/keyboard input. We revert to menu-bar-only when done.

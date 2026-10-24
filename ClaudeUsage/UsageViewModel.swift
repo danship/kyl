@@ -10,7 +10,6 @@ class UsageViewModel: ObservableObject {
     // Accounts waiting on a sign-in. Per-account rather than one flag, because
     // with several sign-ins one expiring shouldn't make the others look broken.
     @Published var pendingLogins: [Account] = []
-    var needsLogin: Bool { !pendingLogins.isEmpty }
     @Published var errorMessage: String? = nil
     @Published var claudeStatus: ClaudeStatus = .operational
 
@@ -114,7 +113,7 @@ class UsageViewModel: ObservableObject {
 
         // Drop results for accounts that have gone away, or their numbers would
         // linger in the popover after the account was removed.
-        let wantedIDs = Set(wanted.map { "claude.\($0.id.uuidString)" })
+        let wantedIDs = Set(wanted.map(ClaudeProvider.id(for:)))
         resultsByProvider = resultsByProvider.filter { wantedIDs.contains($0.key) }
         pendingLogins.removeAll { account in !wanted.contains(where: { $0.id == account.id }) }
 
@@ -127,7 +126,11 @@ class UsageViewModel: ObservableObject {
                 .first(where: { $0.account.id == account.id }),
                   p.account.name != account.name else { continue }
             p.account = account
-            let key = "claude.\(account.id.uuidString)"
+            // A sign-in row in the popover carries the name too.
+            if let i = pendingLogins.firstIndex(where: { $0.id == account.id }) {
+                pendingLogins[i] = account
+            }
+            let key = ClaudeProvider.id(for: account)
             resultsByProvider[key] = resultsByProvider[key]?.map { ws in
                 var copy = ws
                 copy.providerName = account.name
@@ -189,10 +192,19 @@ class UsageViewModel: ObservableObject {
     // True while local work is in progress — drives the menu bar indicator.
     var isLocalBusy: Bool { localBusy }
 
-    // Whether to label blocks with which service they came from. Stays false
-    // while Claude is the only provider, so nothing changes visually today.
-    var showsMultipleProviders: Bool {
-        Set(workspaces.map(\.providerID)).count > 1
+    // Every account is waiting on a sign-in, so there is nothing to show but
+    // the way back in.
+    var allSignedOut: Bool {
+        !pendingLogins.isEmpty && pendingLogins.count >= AccountStore.shared.accounts.count
+    }
+
+    // Workspaces from accounts that are signed in. A signed-out account's last
+    // numbers stay in the menu bar, but the popover shows a sign-in row in their
+    // place rather than presenting hours-old numbers as current — and without
+    // hiding the accounts that are still fine.
+    var signedInWorkspaces: [WorkspaceUsage] {
+        let pending = Set(pendingLogins.map(ClaudeProvider.id(for:)))
+        return workspaces.filter { !pending.contains($0.providerID) }
     }
 
     // Builds the refresh timer using the interval from Preferences, and adds it

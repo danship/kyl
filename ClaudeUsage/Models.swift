@@ -123,6 +123,21 @@ struct WorkspaceUsage: Equatable, Identifiable {
         out.append(contentsOf: weeklyModels)
         return out
     }
+
+    // "Work", "Work · Acme", or just "Acme" — whichever parts tell this block
+    // apart from the others shown with it: the account's name once there's more
+    // than one account, the workspace's name once its own account has more than
+    // one. With one account and one workspace there's nothing to tell apart, so
+    // there's no heading at all.
+    func heading(among all: [WorkspaceUsage]) -> String? {
+        var parts: [String] = []
+        if all.contains(where: { $0.providerID != providerID }) { parts.append(providerName) }
+        if all.contains(where: { $0.providerID == providerID && $0.id != id }),
+           let workspaceName {
+            parts.append(workspaceName)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 }
 
 // MARK: - Forecast result

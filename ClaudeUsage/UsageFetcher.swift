@@ -18,7 +18,9 @@ final class UsageFetcher: NSObject, WKNavigationDelegate, WKScriptMessageHandler
     var onNeedsLogin: (() -> Void)?
     var onError: ((String) -> Void)?
 
-    // Drop cached responses, keeping everything that holds the session.
+    // Drop cached responses, keeping everything that holds the session. This
+    // fetcher's own store: each account after the first has its own, and the
+    // default one is only the first account's.
     private func purgeCaches() {
         let caches: Set<String> = [
             WKWebsiteDataTypeDiskCache,
@@ -26,8 +28,7 @@ final class UsageFetcher: NSObject, WKNavigationDelegate, WKScriptMessageHandler
             WKWebsiteDataTypeFetchCache,
             WKWebsiteDataTypeOfflineWebApplicationCache,
         ]
-        WKWebsiteDataStore.default().removeData(ofTypes: caches,
-                                                modifiedSince: .distantPast) {
+        dataStore.removeData(ofTypes: caches, modifiedSince: .distantPast) {
             dlog("Purged web caches")
         }
     }

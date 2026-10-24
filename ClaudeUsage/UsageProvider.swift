@@ -36,8 +36,10 @@ final class ClaudeProvider: UsageProvider {
     var account: Account
     // Provider ids are per-account, so two sign-ins can't collide in the
     // history store or in the popover's list identity.
-    var id: String { "claude.\(account.id.uuidString)" }
+    var id: String { Self.id(for: account) }
     var displayName: String { account.name }
+
+    nonisolated static func id(for account: Account) -> String { "claude.\(account.id.uuidString)" }
 
     init(account: Account) { self.account = account }
 

@@ -4,6 +4,10 @@ import Combine   // Timer.publish, for the ticking elapsed time on local jobs
 struct PopoverView: View {
     @EnvironmentObject var viewModel: UsageViewModel
 
+    // How tall the usage would be laid out in full, measured inside the scroll
+    // view so the popover can be exactly that tall until it runs out of screen.
+    @State private var usageHeight: CGFloat = 0
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
@@ -20,19 +24,29 @@ struct PopoverView: View {
                 Divider()
             }
 
-            content
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+            // Several accounts' worth of bars, forecasts and history is taller
+            // than a laptop screen, and a popover that runs off the screen is
+            // simply cut off. The usage scrolls once it would; the footer stays.
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    content
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
 
-            // The day strip. Only worth showing once there's more than the window
-            // you're currently in — one block on its own explains nothing.
-            if dayWindows.count >= 2 {
-                Divider()
-                DayStripView(windows: dayWindows,
-                             windowLength: UsageForecaster.windowLength(forKey: "session"))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    if !dayLanes.isEmpty {
+                        Divider()
+                        DayStripView(lanes: dayLanes,
+                                     windowLength: UsageForecaster.windowLength(forKey: "session"))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                    }
+                }
+                .background(GeometryReader { geo in
+                    Color.clear.preference(key: UsageHeightKey.self, value: geo.size.height)
+                })
             }
+            .frame(height: min(usageHeight, maxUsageHeight))
+            .onPreferenceChange(UsageHeightKey.self) { usageHeight = $0 }
 
             // Only appears while something is actually running — an idle section
             // would just be clutter in a popover you open to check a number.
@@ -80,16 +94,34 @@ struct PopoverView: View {
         .frame(width: 300)
     }
 
-    // Session windows overlapping the last half-day, for the strip.
-    private var dayWindows: [UsageWindow] {
-        guard let provider = viewModel.workspaces.first?.providerID else { return [] }
+    // What the screen leaves for the scrolling part: the menu bar, the
+    // popover's arrow, the footer, and the status banner and local-model
+    // section that sit outside it.
+    private var maxUsageHeight: CGFloat {
+        (NSScreen.main?.visibleFrame.height ?? 800) - 180
+    }
+
+    // One lane of today's session windows per signed-in account, for the
+    // strip. A lane is only worth showing once there's more than the window
+    // you're currently in — one block on its own explains nothing. Lanes are
+    // named once there's more than one account to tell apart.
+    private var dayLanes: [DayStripView.Lane] {
         let length = UsageForecaster.windowLength(forKey: "session")
         // The strip's axis is today, so fetch anything overlapping today.
         let start = Calendar.current.startOfDay(for: Date())
-        return UsageHistory.shared.windows(providerID: provider, metricKey: "session",
-                                           from: start,
-                                           to: start.addingTimeInterval(24 * 3600),
-                                           windowLength: length)
+        var seen = Set<String>()
+        let accounts = viewModel.workspaces.filter { seen.insert($0.providerID).inserted }
+        let signedIn = Set(viewModel.signedInWorkspaces.map(\.providerID))
+        return accounts.filter { signedIn.contains($0.providerID) }.compactMap { ws in
+            let windows = UsageHistory.shared.windows(providerID: ws.providerID, metricKey: "session",
+                                                      from: start,
+                                                      to: start.addingTimeInterval(24 * 3600),
+                                                      windowLength: length)
+            guard windows.count >= 2 else { return nil }
+            return DayStripView.Lane(id: ws.providerID,
+                                     name: accounts.count > 1 ? ws.providerName : nil,
+                                     windows: windows)
+        }
     }
 
     private var footerText: String {
@@ -100,7 +132,7 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.needsLogin {
+        if viewModel.allSignedOut {
             VStack(spacing: 10) {
                 Image(systemName: "person.crop.circle.badge.exclamationmark")
                     .font(.system(size: 30)).foregroundStyle(.secondary)
@@ -114,7 +146,23 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 20)
 
-        } else if viewModel.workspaces.isEmpty, let err = viewModel.errorMessage {
+        } else {
+            VStack(alignment: .leading, spacing: 18) {
+                // An account that needs signing in again gets a row of its own,
+                // so the others keep showing their numbers.
+                ForEach(viewModel.pendingLogins) { account in
+                    PendingSignInRow(account: account)
+                }
+                if !viewModel.pendingLogins.isEmpty { Divider() }
+                usage
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var usage: some View {
+        let shown = viewModel.signedInWorkspaces
+        if shown.isEmpty, let err = viewModel.errorMessage {
             VStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 26)).foregroundStyle(.secondary)
@@ -125,17 +173,15 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
 
-        } else if viewModel.workspaces.isEmpty {
+        } else if shown.isEmpty {
             infoState(icon: "hourglass", text: "Loading your usage…")
 
         } else {
-            VStack(alignment: .leading, spacing: 18) {
-                ForEach(Array(viewModel.workspaces.enumerated()), id: \.element.id) { index, ws in
-                    if index > 0 { Divider() }
-                    WorkspaceSection(workspace: ws,
-                                     showName: viewModel.workspaces.count > 1,
-                                     showProvider: viewModel.showsMultipleProviders)
-                }
+            ForEach(Array(shown.enumerated()), id: \.element.id) { index, ws in
+                if index > 0 { Divider() }
+                // Headed against every account, signed in or not, so a block's
+                // heading doesn't come and go as another account's session does.
+                WorkspaceSection(workspace: ws, heading: ws.heading(among: viewModel.workspaces))
             }
         }
     }
@@ -150,22 +196,43 @@ struct PopoverView: View {
     }
 }
 
+private struct UsageHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+// MARK: - An account waiting on a sign-in
+
+// Its last numbers would be stale, so it shows the way back in instead, beside
+// the accounts that are still signed in.
+struct PendingSignInRow: View {
+    let account: Account
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .foregroundStyle(.secondary)
+            Text(account.name)
+                .font(.subheadline).fontWeight(.semibold)
+                .foregroundStyle(Color.subtleText)
+            Spacer(minLength: 8)
+            Button("Sign In") {
+                (NSApp.delegate as? AppDelegate)?.showLoginWindow(for: account)
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+        }
+    }
+}
+
 // MARK: - One workspace's block of bars
 
 struct WorkspaceSection: View {
     let workspace: WorkspaceUsage
-    let showName: Bool
-    var showProvider: Bool = false
-
-    // "Claude", "Claude · Work", or just "Work" — whichever parts are needed to
-    // tell this block apart from the others. With a single provider and a single
-    // workspace there's nothing to disambiguate, so no heading appears at all.
-    private var heading: String? {
-        var parts: [String] = []
-        if showProvider { parts.append(workspace.providerName) }
-        if showName, let name = workspace.workspaceName { parts.append(name) }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
+    // From WorkspaceUsage.heading(among:); nil when there's nothing to tell apart.
+    let heading: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

@@ -10,8 +10,18 @@ import SwiftUI
 // The axis is the calendar day rather than a rolling window, because the
 // question is "how should I use the rest of today", which needs the hours ahead
 // on screen as much as the ones behind.
+//
+// Each account has its own session windows, so each gets a lane of its own on
+// the shared axis, which also lines up the hours when one account could take
+// over from another.
 struct DayStripView: View {
-    let windows: [UsageWindow]
+    struct Lane: Identifiable {
+        let id: String
+        let name: String?          // nil when there's only one account to show
+        let windows: [UsageWindow]
+    }
+
+    let lanes: [Lane]
     let windowLength: TimeInterval
 
     private var dayStart: Date { Calendar.current.startOfDay(for: Date()) }
@@ -47,61 +57,18 @@ struct DayStripView: View {
                     .font(.caption2).foregroundStyle(.tertiary)
             }
 
-            GeometryReader { geo in
-                let w = geo.size.width, h = geo.size.height
-                ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.secondary.opacity(0.10))
-
-                    // Quarter-day ticks, so a block's position reads as a time
-                    // rather than just a place on a bar.
-                    ForEach([6, 12, 18], id: \.self) { hour in
-                        Path { p in
-                            let x = position(dayStart.addingTimeInterval(Double(hour) * 3600), width: w)
-                            p.move(to: CGPoint(x: x, y: 0))
-                            p.addLine(to: CGPoint(x: x, y: h))
-                        }
-                        .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-                    }
-
-                    ForEach(windows) { window in
-                        let opened = window.resetAt.addingTimeInterval(-windowLength)
-                        let x0 = position(opened, width: w)
-                        let bw = max(2, position(window.resetAt, width: w) - x0)
-                        let frac = CGFloat(min(max(window.peakPercent, 0), 100)) / 100
-                        let live = window.resetAt > Date()
-
-                        ZStack(alignment: .bottom) {
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.secondary.opacity(0.12))
-                                .frame(width: bw, height: h)
-                            // Height is how full it got, so unused capacity shows
-                            // as the empty space above.
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(window.peakPercent >= 100 ? Color.red
-                                      : Color.accentColor.opacity(live ? 0.85 : 0.5))
-                                .frame(width: bw, height: max(2, frac * h))
-                        }
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 2)
-                                .strokeBorder(live ? Color.accentColor.opacity(0.8) : .clear,
-                                              lineWidth: 1)
-                                .frame(width: bw, height: h)
-                        )
-                        .offset(x: x0)
-                    }
-
-                    // Now — sits where it actually is, so the space to its right
-                    // is the day you have left.
-                    Path { p in
-                        let x = position(Date(), width: w)
-                        p.move(to: CGPoint(x: x, y: -2))
-                        p.addLine(to: CGPoint(x: x, y: h + 2))
-                    }
-                    .stroke(Color.primary.opacity(0.55), lineWidth: 1.5)
+            ForEach(lanes) { lane in
+                if let name = lane.name {
+                    Text(name)
+                        .font(.caption2)
+                        .foregroundStyle(Color.subtleText)
+                        .padding(.top, 2)
                 }
+                // Lanes are shorter when they stack, so three accounts still
+                // fit beneath their bars.
+                bar(lane.windows)
+                    .frame(height: lanes.count > 1 ? 20 : 30)
             }
-            .frame(height: 30)
 
             HStack(spacing: 0) {
                 Text(hourLabel(0)); Spacer()
@@ -112,6 +79,63 @@ struct DayStripView: View {
             }
             .font(.caption2)
             .foregroundStyle(Color.subtleText)
+        }
+    }
+
+    private func bar(_ windows: [UsageWindow]) -> some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.secondary.opacity(0.10))
+
+                // Quarter-day ticks, so a block's position reads as a time
+                // rather than just a place on a bar.
+                ForEach([6, 12, 18], id: \.self) { hour in
+                    Path { p in
+                        let x = position(dayStart.addingTimeInterval(Double(hour) * 3600), width: w)
+                        p.move(to: CGPoint(x: x, y: 0))
+                        p.addLine(to: CGPoint(x: x, y: h))
+                    }
+                    .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+                }
+
+                ForEach(windows) { window in
+                    let opened = window.resetAt.addingTimeInterval(-windowLength)
+                    let x0 = position(opened, width: w)
+                    let bw = max(2, position(window.resetAt, width: w) - x0)
+                    let frac = CGFloat(min(max(window.peakPercent, 0), 100)) / 100
+                    let live = window.resetAt > Date()
+
+                    ZStack(alignment: .bottom) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.secondary.opacity(0.12))
+                            .frame(width: bw, height: h)
+                        // Height is how full it got, so unused capacity shows
+                        // as the empty space above.
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(window.peakPercent >= 100 ? Color.red
+                                  : Color.accentColor.opacity(live ? 0.85 : 0.5))
+                            .frame(width: bw, height: max(2, frac * h))
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2)
+                            .strokeBorder(live ? Color.accentColor.opacity(0.8) : .clear,
+                                          lineWidth: 1)
+                            .frame(width: bw, height: h)
+                    )
+                    .offset(x: x0)
+                }
+
+                // Now — sits where it actually is, so the space to its right
+                // is the day you have left.
+                Path { p in
+                    let x = position(Date(), width: w)
+                    p.move(to: CGPoint(x: x, y: -2))
+                    p.addLine(to: CGPoint(x: x, y: h + 2))
+                }
+                .stroke(Color.primary.opacity(0.55), lineWidth: 1.5)
+            }
         }
     }
 }

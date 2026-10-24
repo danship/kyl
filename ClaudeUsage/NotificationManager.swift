@@ -27,15 +27,17 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
 
     func evaluate(_ workspaces: [WorkspaceUsage]) {
         guard authorized else { return }
-        let showName = workspaces.count > 1
         for ws in workspaces {
+            // The same heading the popover gives this block, so an alert says
+            // which account is running out.
+            let prefix = ws.heading(among: workspaces).map { "\($0) · " } ?? ""
             for metric in ws.allMetrics {
-                evaluate(metric, workspace: ws, showName: showName)
+                evaluate(metric, workspace: ws, prefix: prefix)
             }
         }
     }
 
-    private func evaluate(_ metric: UsageMetric, workspace: WorkspaceUsage, showName: Bool) {
+    private func evaluate(_ metric: UsageMetric, workspace: WorkspaceUsage, prefix: String) {
         let key = "\(workspace.id).\(metric.key)"
         var state = states[key] ?? State(lastPercent: metric.percent, notifiedLevel: 0, forecastFired: false)
 
@@ -44,8 +46,6 @@ final class NotificationManager: NSObject, UNUserNotificationCenterDelegate {
             state.notifiedLevel = 0
             state.forecastFired = false
         }
-
-        let prefix = (showName ? (workspace.workspaceName.map { "\($0) · " } ?? "") : "")
 
         let prefs = Preferences.shared
 
