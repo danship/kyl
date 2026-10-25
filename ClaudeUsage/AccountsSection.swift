@@ -73,7 +73,8 @@ struct AccountsSection: View {
     }
 }
 
-// One account: an editable name, its sign-in state, and a way to remove it.
+// One account: its color, an editable name, its sign-in state, and a way to
+// remove it.
 private struct AccountRow: View {
     let account: Account
     let needsSignIn: Bool
@@ -89,6 +90,19 @@ private struct AccountRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // An account with no color shows a plain heading; the well shows
+            // gray until one is picked.
+            ColorPicker("Color", selection: Binding(
+                get: { account.swatch ?? .gray },
+                set: { AccountStore.shared.setColor(account, to: $0.hex) }),
+                supportsOpacity: false)
+                .labelsHidden()
+                .help("This account's color in the popover")
+                .contextMenu {
+                    Button("No Color") { AccountStore.shared.setColor(account, to: nil) }
+                        .disabled(account.color == nil)
+                }
+
             TextField("Name", text: $draft)
                 .labelsHidden()          // inside a Form the label otherwise renders as a column: "Name  Claude"
                 .textFieldStyle(.plain)

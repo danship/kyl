@@ -120,6 +120,7 @@ struct PopoverView: View {
             guard windows.count >= 2 else { return nil }
             return DayStripView.Lane(id: ws.providerID,
                                      name: accounts.count > 1 ? ws.providerName : nil,
+                                     swatch: viewModel.account(forProvider: ws.providerID)?.swatch,
                                      windows: windows)
         }
     }
@@ -151,7 +152,8 @@ struct PopoverView: View {
                 // An account that needs signing in again gets a row of its own,
                 // so the others keep showing their numbers.
                 ForEach(viewModel.pendingLogins) { account in
-                    PendingSignInRow(account: account)
+                    PendingSignInRow(account: account,
+                                     swatch: viewModel.account(forProvider: ClaudeProvider.id(for: account))?.swatch)
                 }
                 if !viewModel.pendingLogins.isEmpty { Divider() }
                 usage
@@ -181,7 +183,9 @@ struct PopoverView: View {
                 if index > 0 { Divider() }
                 // Headed against every account, signed in or not, so a block's
                 // heading doesn't come and go as another account's session does.
-                WorkspaceSection(workspace: ws, heading: ws.heading(among: viewModel.workspaces))
+                WorkspaceSection(workspace: ws,
+                                 heading: ws.heading(among: viewModel.workspaces),
+                                 swatch: viewModel.account(forProvider: ws.providerID)?.swatch)
             }
         }
     }
@@ -209,14 +213,13 @@ private struct UsageHeightKey: PreferenceKey {
 // the accounts that are still signed in.
 struct PendingSignInRow: View {
     let account: Account
+    let swatch: Color?
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "person.crop.circle.badge.exclamationmark")
                 .foregroundStyle(.secondary)
-            Text(account.name)
-                .font(.subheadline).fontWeight(.semibold)
-                .foregroundStyle(Color.subtleText)
+            AccountHeading(text: account.name, swatch: swatch)
             Spacer(minLength: 8)
             Button("Sign In") {
                 (NSApp.delegate as? AppDelegate)?.showLoginWindow(for: account)
@@ -227,19 +230,44 @@ struct PendingSignInRow: View {
     }
 }
 
+// MARK: - An account's name
+
+// In the account's color when it has one, so a block reads as that account
+// before its name does. The bars keep their own colors: those say on pace,
+// getting close, or over, and an account colored red would otherwise look
+// permanently in trouble.
+struct AccountHeading: View {
+    let text: String
+    let swatch: Color?
+
+    var body: some View {
+        if let swatch {
+            Text(text)
+                .font(.subheadline).fontWeight(.semibold)
+                .foregroundStyle(swatch.readableText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(swatch))
+        } else {
+            Text(text)
+                .font(.subheadline).fontWeight(.semibold)
+                .foregroundStyle(Color.subtleText)
+        }
+    }
+}
+
 // MARK: - One workspace's block of bars
 
 struct WorkspaceSection: View {
     let workspace: WorkspaceUsage
     // From WorkspaceUsage.heading(among:); nil when there's nothing to tell apart.
     let heading: String?
+    let swatch: Color?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if let heading {
-                Text(heading)
-                    .font(.subheadline).fontWeight(.semibold)
-                    .foregroundStyle(Color.subtleText)
+                AccountHeading(text: heading, swatch: swatch)
             }
 
             if let session = workspace.session {
@@ -267,6 +295,14 @@ struct WorkspaceSection: View {
                     .font(.caption2).foregroundStyle(.orange)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        // A rail down the block's edge, in the popover's side padding, so the
+        // color still says whose bars these are once the heading has scrolled
+        // away.
+        .background(alignment: .leading) {
+            if let swatch {
+                Capsule().fill(swatch).frame(width: 3).offset(x: -9)
             }
         }
     }

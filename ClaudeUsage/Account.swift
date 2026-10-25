@@ -1,6 +1,8 @@
 import Foundation
 import WebKit
 import Combine
+import SwiftUI
+import AppKit
 
 // One claude.ai sign-in.
 //
@@ -17,6 +19,45 @@ struct Account: Codable, Identifiable, Equatable {
     // upgrade. Same reasoning as freezing the bundle identifier through the
     // rename.
     var usesLegacyStore: Bool
+
+    // A color to tell this account apart at a glance — "#RRGGBB", or nil for
+    // none. Optional, so lists saved before it existed still decode.
+    var color: String? = nil
+
+    var swatch: Color? { color.flatMap(Color.init(hex:)) }
+}
+
+extension Color {
+    // "#RRGGBB" → a color; nil for anything else.
+    nonisolated init?(hex: String) {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        guard digits.count == 6, let value = UInt32(digits, radix: 16) else { return nil }
+        self.init(.sRGB,
+                  red: Double((value >> 16) & 0xFF) / 255,
+                  green: Double((value >> 8) & 0xFF) / 255,
+                  blue: Double(value & 0xFF) / 255)
+    }
+
+    var hex: String? {
+        guard let c = NSColor(self).usingColorSpace(.sRGB) else { return nil }
+        func byte(_ v: CGFloat) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
+        return String(format: "#%02X%02X%02X",
+                      byte(c.redComponent), byte(c.greenComponent), byte(c.blueComponent))
+    }
+
+    // Black or white, whichever has more contrast against this color. The
+    // crossover sits at a relative luminance of about 0.18, not 0.5: white
+    // stops reading well on mid-tones sooner than intuition says.
+    var readableText: Color {
+        guard let c = NSColor(self).usingColorSpace(.sRGB) else { return .white }
+        func linear(_ v: CGFloat) -> CGFloat {
+            v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        let luminance = 0.2126 * linear(c.redComponent)
+                      + 0.7152 * linear(c.greenComponent)
+                      + 0.0722 * linear(c.blueComponent)
+        return luminance > 0.179 ? .black : .white
+    }
 }
 
 final class AccountStore: ObservableObject {
@@ -56,6 +97,13 @@ final class AccountStore: ObservableObject {
     func rename(_ account: Account, to name: String) {
         guard let i = accounts.firstIndex(where: { $0.id == account.id }) else { return }
         accounts[i].name = name
+        persist()
+    }
+
+    func setColor(_ account: Account, to color: String?) {
+        guard let i = accounts.firstIndex(where: { $0.id == account.id }),
+              accounts[i].color != color else { return }
+        accounts[i].color = color
         persist()
     }
 

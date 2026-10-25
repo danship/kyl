@@ -207,6 +207,14 @@ class UsageViewModel: ObservableObject {
         return workspaces.filter { !pending.contains($0.providerID) }
     }
 
+    // The account behind a provider id, read from the store rather than the
+    // provider so a color picked in Preferences shows without waiting for a
+    // fetch. Changing an account republishes `workspaces` (buildProviders ends
+    // in rebuildWorkspaces), which is what redraws the popover.
+    func account(forProvider providerID: String) -> Account? {
+        AccountStore.shared.accounts.first { ClaudeProvider.id(for: $0) == providerID }
+    }
+
     // Builds the refresh timer using the interval from Preferences, and adds it
     // in `.common` mode so it keeps firing even while a menu is open — and isn't
     // limited to the default run-loop mode that App Nap can suspend.

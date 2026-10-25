@@ -18,6 +18,7 @@ struct DayStripView: View {
     struct Lane: Identifiable {
         let id: String
         let name: String?          // nil when there's only one account to show
+        let swatch: Color?         // the account's color, marking its name
         let windows: [UsageWindow]
     }
 
@@ -59,10 +60,15 @@ struct DayStripView: View {
 
             ForEach(lanes) { lane in
                 if let name = lane.name {
-                    Text(name)
-                        .font(.caption2)
-                        .foregroundStyle(Color.subtleText)
-                        .padding(.top, 2)
+                    HStack(spacing: 4) {
+                        if let swatch = lane.swatch {
+                            Circle().fill(swatch).frame(width: 7, height: 7)
+                        }
+                        Text(name)
+                            .font(.caption2)
+                            .foregroundStyle(Color.subtleText)
+                    }
+                    .padding(.top, 2)
                 }
                 // Lanes are shorter when they stack, so three accounts still
                 // fit beneath their bars.
