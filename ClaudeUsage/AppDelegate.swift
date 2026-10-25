@@ -351,12 +351,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             loginWindow?.close()
         }
         loginAccount = target
-        // Become a regular app while signing in: this gives a Dock icon (click it
-        // to bring the window back if it slips behind your browser) and reliable
-        // mouse/keyboard input. We revert to menu-bar-only when done.
+        // The app stays menu-bar-only while signing in, with no Dock icon. If
+        // the window slips behind another app, the popover's Sign In and the
+        // menu's "Sign in to Claude…" bring it back.
         // NOTE: deliberately NOT a floating window — a WKWebView at an elevated
         // window level doesn't reliably receive clicks.
-        NSApp.setActivationPolicy(.regular)
 
         if loginWindow == nil {
             let store = loginAccount.map { AccountStore.dataStore(for: $0) } ?? .default()
@@ -373,14 +372,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             win.center()
             loginWindow = win
         }
-        loginWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        loginWindow?.makeKeyAndOrderFront(nil)
+        // Activation is a request macOS can refuse when the sign-in opens on
+        // its own (a session expiring in the background); this puts the
+        // window in front either way.
+        loginWindow?.orderFrontRegardless()
     }
 
     private func finishLogin() {
         loginWindow?.orderOut(nil)
         loginWindow = nil
-        NSApp.setActivationPolicy(.accessory)   // back to menu-bar-only
         if let account = loginAccount {
             viewModel.signedIn(account)
         } else {
@@ -393,12 +395,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         showLoginWindow()
     }
 
-    // If the user closes the sign-in window without finishing, revert to
-    // menu-bar-only so we don't leave a stray Dock icon behind.
+    // Closing the sign-in window without finishing leaves the account pending;
+    // its row in the popover offers the sign-in again.
     func windowWillClose(_ notification: Notification) {
         if (notification.object as AnyObject) === loginWindow {
             loginWindow = nil
-            NSApp.setActivationPolicy(.accessory)
         }
     }
 }
