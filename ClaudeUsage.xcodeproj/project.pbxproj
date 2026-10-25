@@ -6,10 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		82D8C25D303B6C7B001BAF4A /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 82D8C25C303B6C7B001BAF4A /* Sparkle */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		826F55EF2F9D43C100872759 /* ClaudeUsage.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = ClaudeUsage.app; path = Juicage.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -27,7 +23,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				82D8C25D303B6C7B001BAF4A /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,9 +64,6 @@
 				826F55F12F9D43C100872759 /* ClaudeUsage */,
 			);
 			name = ClaudeUsage;
-			packageProductDependencies = (
-				82D8C25C303B6C7B001BAF4A /* Sparkle */,
-			);
 			productName = ClaudeUsage;
 			productReference = 826F55EF2F9D43C100872759 /* ClaudeUsage.app */;
 			productType = "com.apple.product-type.application";
@@ -100,9 +92,6 @@
 			);
 			mainGroup = 826F55E62F9D43C100872759;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				82D8C25B303B6C7B001BAF4A /* XCRemoteSwiftPackageReference "Sparkle" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 826F55F02F9D43C100872759 /* Products */;
 			projectDirPath = "";
@@ -281,7 +270,6 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Juicage;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -335,7 +323,6 @@
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Juicage;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -384,25 +371,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		82D8C25B303B6C7B001BAF4A /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/sparkle-project/Sparkle";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.9.6;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		82D8C25C303B6C7B001BAF4A /* Sparkle */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 82D8C25B303B6C7B001BAF4A /* XCRemoteSwiftPackageReference "Sparkle" */;
-			productName = Sparkle;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 826F55E72F9D43C100872759 /* Project object */;
 }

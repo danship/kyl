@@ -14,6 +14,13 @@ import Sparkle
 // Sparkle verifies each update with an EdDSA signature (SUPublicEDKey in
 // Info.plist) on top of Apple notarization, so a tampered download is rejected
 // even if someone could serve it from our URL.
+//
+// This fork builds without the package (removed 2026-10-24): its feed and key
+// are upstream's, so an in-app update would install upstream's build over the
+// fork's changes. "Check for Updates…" opens upstream's releases page, to see
+// what is new there. To restore in-app updates, add the Sparkle package back
+// and an Info.plist carrying SUFeedURL and SUPublicEDKey for a feed and key
+// this fork controls — git history has both as they were.
 final class UpdateController {
     static let shared = UpdateController()
 
