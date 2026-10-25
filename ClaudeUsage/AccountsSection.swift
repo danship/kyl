@@ -13,11 +13,16 @@ struct AccountsSection: View {
     // Removal signs the account out and deletes its cookies, so it asks first.
     @State private var pendingRemoval: Account?
 
+    // Read when the section appears; empty without Chrome, which hides the
+    // picker.
+    @State private var chromeProfiles: [ChromeProfiles.Profile] = []
+
     var body: some View {
         Section {
             ForEach(store.accounts) { account in
                 AccountRow(
                     account: account,
+                    chromeProfiles: chromeProfiles,
                     needsSignIn: viewModel.pendingLogins.contains { $0.id == account.id },
                     canRemove: store.accounts.count > 1,
                     onSignIn: { signIn(account) },
@@ -42,6 +47,7 @@ struct AccountsSection: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
+        .onAppear { chromeProfiles = ChromeProfiles.profiles() }
         .confirmationDialog(
             "Remove \(pendingRemoval?.name ?? "this account")?",
             isPresented: Binding(get: { pendingRemoval != nil },
@@ -73,10 +79,11 @@ struct AccountsSection: View {
     }
 }
 
-// One account: its color, an editable name, its sign-in state, and a way to
-// remove it.
+// One account: its color, an editable name, its sign-in state, a way to
+// remove it, and the Chrome profile whose theme color it can follow.
 private struct AccountRow: View {
     let account: Account
+    let chromeProfiles: [ChromeProfiles.Profile]
     let needsSignIn: Bool
     let canRemove: Bool
     let onSignIn: () -> Void
@@ -89,18 +96,51 @@ private struct AccountRow: View {
     @FocusState private var focused: Bool
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            row
+            if !chromeProfiles.isEmpty {
+                chromePicker
+            }
+        }
+    }
+
+    // A linked profile that Chrome no longer lists still shows, so the
+    // picker never claims an account is unlinked when it isn't.
+    private var chromeChoices: [ChromeProfiles.Profile] {
+        guard let linked = account.chromeProfile,
+              !chromeProfiles.contains(where: { $0.id == linked }) else { return chromeProfiles }
+        return chromeProfiles + [ChromeProfiles.Profile(id: linked, name: "\(linked) (missing)", email: nil)]
+    }
+
+    private var chromePicker: some View {
+        Picker("Color from Chrome", selection: Binding(
+            get: { account.chromeProfile },
+            set: { AccountStore.shared.linkChromeProfile(account, to: $0) })) {
+            Text("None").tag(String?.none)
+            ForEach(chromeChoices) { profile in
+                Text(profile.label).tag(Optional(profile.id))
+            }
+        }
+        .font(.caption)
+        .controlSize(.small)
+        .help("Follow this Chrome profile's theme color")
+    }
+
+    private var row: some View {
         HStack(spacing: 8) {
             // An account with no color shows a plain heading; the well shows
-            // gray until one is picked.
+            // gray until one is picked. Following Chrome, the theme sets it.
             ColorPicker("Color", selection: Binding(
                 get: { account.swatch ?? .gray },
                 set: { AccountStore.shared.setColor(account, to: $0.hex) }),
                 supportsOpacity: false)
                 .labelsHidden()
-                .help("This account's color in the popover")
+                .disabled(account.chromeProfile != nil)
+                .help(account.chromeProfile == nil ? "This account's color in the popover"
+                                                   : "Set by the Chrome profile's theme")
                 .contextMenu {
                     Button("No Color") { AccountStore.shared.setColor(account, to: nil) }
-                        .disabled(account.color == nil)
+                        .disabled(account.color == nil || account.chromeProfile != nil)
                 }
 
             TextField("Name", text: $draft)

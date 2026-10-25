@@ -62,6 +62,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         #endif
         NotificationManager.shared.requestAuthorization()
         _ = UpdateController.shared     // starts Sparkle's scheduled check, if present
+        AccountStore.shared.syncChromeColors()
         setupStatusBar()
         setupPopover()
         observeViewModel()
@@ -222,6 +223,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            AccountStore.shared.syncChromeColors()
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
@@ -322,6 +324,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func menuPreferences() {
+        AccountStore.shared.syncChromeColors()
         if settingsWindow == nil {
             let hosting = NSHostingController(
                 rootView: SettingsView().environmentObject(viewModel))

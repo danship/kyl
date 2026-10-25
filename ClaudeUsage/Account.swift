@@ -24,6 +24,11 @@ struct Account: Codable, Identifiable, Equatable {
     // none. Optional, so lists saved before it existed still decode.
     var color: String? = nil
 
+    // The Chrome profile (its folder, e.g. "Profile 2") whose theme this
+    // account wears. While set, `color` follows that theme and holds the last
+    // color read from it.
+    var chromeProfile: String? = nil
+
     var swatch: Color? { color.flatMap(Color.init(hex:)) }
 }
 
@@ -105,6 +110,29 @@ final class AccountStore: ObservableObject {
               accounts[i].color != color else { return }
         accounts[i].color = color
         persist()
+    }
+
+    func linkChromeProfile(_ account: Account, to profile: String?) {
+        guard let i = accounts.firstIndex(where: { $0.id == account.id }),
+              accounts[i].chromeProfile != profile else { return }
+        accounts[i].chromeProfile = profile
+        persist()
+        syncChromeColors()
+    }
+
+    // Gives each linked account its Chrome profile's current theme color.
+    // Called where the color shows — the popover and Preferences opening —
+    // so a theme changed in Chrome is there the next time you look, with
+    // nothing watching Chrome's files in between.
+    func syncChromeColors() {
+        for account in accounts {
+            guard let profile = account.chromeProfile else { continue }
+            switch ChromeProfiles.theme(ofProfile: profile) {
+            case .color(let hex): setColor(account, to: hex)
+            case .none:           setColor(account, to: nil)
+            case .unreadable:     continue      // keep the last color read
+            }
+        }
     }
 
     func remove(_ account: Account) {
