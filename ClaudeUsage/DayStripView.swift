@@ -59,21 +59,16 @@ struct DayStripView: View {
             }
 
             ForEach(lanes) { lane in
-                if let name = lane.name {
-                    HStack(spacing: 4) {
-                        if let swatch = lane.swatch {
-                            Circle().fill(swatch).frame(width: 7, height: 7)
-                        }
-                        Text(name)
-                            .font(.caption2)
-                            .foregroundStyle(Color.subtleText)
+                HStack(spacing: 6) {
+                    if labelWidth > 0 {
+                        laneLabel(lane).frame(width: labelWidth, alignment: .leading)
                     }
-                    .padding(.top, 2)
+                    // Lanes are shorter when they stack, so three accounts
+                    // still make a compact strip.
+                    bar(lane.windows)
+                        .frame(height: lanes.count > 1 ? 14 : 24)
                 }
-                // Lanes are shorter when they stack, so three accounts still
-                // fit beneath their bars.
-                bar(lane.windows)
-                    .frame(height: lanes.count > 1 ? 20 : 30)
+                .help(lane.name ?? "")
             }
 
             HStack(spacing: 0) {
@@ -85,6 +80,29 @@ struct DayStripView: View {
             }
             .font(.caption2)
             .foregroundStyle(Color.subtleText)
+            .padding(.leading, labelWidth > 0 ? labelWidth + 6 : 0)
+        }
+    }
+
+    // Lanes sit beside their label, not under it. A colored account needs only
+    // its dot, which matches its card above; an account without a color needs
+    // its name.
+    private var labelWidth: CGFloat {
+        let named = lanes.filter { $0.name != nil }
+        if named.isEmpty { return 0 }
+        return named.allSatisfy { $0.swatch != nil } ? 8 : 64
+    }
+
+    @ViewBuilder
+    private func laneLabel(_ lane: Lane) -> some View {
+        if let swatch = lane.swatch, labelWidth == 8 {
+            Circle().fill(swatch).frame(width: 8, height: 8)
+        } else if let name = lane.name {
+            Text(name)
+                .font(.caption2)
+                .foregroundStyle(Color.subtleText)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
     }
 

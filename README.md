@@ -62,9 +62,15 @@ Requires **macOS 13 (Ventura) or later**. Universal (Apple Silicon and Intel).
   Week 71%"**. Three named limits is a wide menu bar and a 14-inch screen
   hasn't got it to spare, so the names can shrink to initials — **"C:42% W:71%
   F:12%"** — or go entirely: **"42% · 71% · 12%"**.
-- **Detail popover** — per-workspace bars for the current session, the weekly
-  all-models cap, and each per-model cap (e.g. Fable) your account has. Every
-  workspace your login belongs to is shown.
+- **Detail popover** — a compact card per account: one line each for the
+  current session, the weekly all-models cap and each per-model cap (e.g.
+  Fable), and one line of reset times. Click a card for its pace forecasts,
+  reset times and history in full. Every workspace your login belongs to is
+  shown.
+- **Several accounts, each in its own color** — sign in to more than one
+  claude.ai account and each gets its own card. Give an account a color in
+  Preferences → Accounts, or link it to a Chrome profile and it wears that
+  profile's theme color, following it when the theme changes.
 - **Pace forecast** — projects your burn rate forward and answers in clock
   time: **"At this pace you'll run out around 5:10 PM"** when you're heading for
   a wall, or **"At this pace you're good through the reset (~16% used)"** when
@@ -178,6 +184,10 @@ file and LM Studio's CLI output. Be aware that LM Studio's stream includes
 **your prompt text**, which Juicage displays as the task title and may include in
 a "finished" notification. It is never stored or transmitted, and *Show what
 it's working on* in Preferences turns it off.
+
+An account linked to a Chrome profile reads Chrome's own files on your Mac —
+the profile list, that profile's theme setting and the theme's colors — to
+borrow its color. Only the color is kept, and nothing is sent anywhere.
 
 ## A note on reliability
 

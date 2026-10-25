@@ -8,6 +8,10 @@ struct PopoverView: View {
     // view so the popover can be exactly that tall until it runs out of screen.
     @State private var usageHeight: CGFloat = 0
 
+    // Cards opened to their detailed rows, by workspace id. Every card starts
+    // compact each launch.
+    @State private var expanded: Set<String> = []
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
@@ -28,19 +32,16 @@ struct PopoverView: View {
             // than a laptop screen, and a popover that runs off the screen is
             // simply cut off. The usage scrolls once it would; the footer stays.
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
                     content
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
 
                     if !dayLanes.isEmpty {
-                        Divider()
                         DayStripView(lanes: dayLanes,
                                      windowLength: UsageForecaster.windowLength(forKey: "session"))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
+                            .card(nil)
                     }
                 }
+                .padding(12)
                 .background(GeometryReader { geo in
                     Color.clear.preference(key: UsageHeightKey.self, value: geo.size.height)
                 })
@@ -148,14 +149,13 @@ struct PopoverView: View {
             .padding(.vertical, 20)
 
         } else {
-            VStack(alignment: .leading, spacing: 18) {
-                // An account that needs signing in again gets a row of its own,
-                // so the others keep showing their numbers.
+            VStack(alignment: .leading, spacing: 10) {
+                // An account that needs signing in again gets a card of its
+                // own, so the others keep showing their numbers.
                 ForEach(viewModel.pendingLogins) { account in
                     PendingSignInRow(account: account,
                                      swatch: viewModel.account(forProvider: ClaudeProvider.id(for: account))?.swatch)
                 }
-                if !viewModel.pendingLogins.isEmpty { Divider() }
                 usage
             }
         }
@@ -179,13 +179,19 @@ struct PopoverView: View {
             infoState(icon: "hourglass", text: "Loading your usage…")
 
         } else {
-            ForEach(Array(shown.enumerated()), id: \.element.id) { index, ws in
-                if index > 0 { Divider() }
-                // Headed against every account, signed in or not, so a block's
-                // heading doesn't come and go as another account's session does.
+            ForEach(shown) { ws in
+                // Headed against every account, signed in or not, so a card's
+                // title doesn't change as another account's session comes and
+                // goes.
                 WorkspaceSection(workspace: ws,
                                  heading: ws.heading(among: viewModel.workspaces),
-                                 swatch: viewModel.account(forProvider: ws.providerID)?.swatch)
+                                 swatch: viewModel.account(forProvider: ws.providerID)?.swatch,
+                                 expanded: expanded.contains(ws.id),
+                                 onToggle: {
+                                     withAnimation(.easeInOut(duration: 0.18)) {
+                                         if expanded.remove(ws.id) == nil { expanded.insert(ws.id) }
+                                     }
+                                 })
             }
         }
     }
@@ -217,71 +223,113 @@ struct PendingSignInRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: "person.crop.circle.badge.exclamationmark")
-                .foregroundStyle(.secondary)
-            AccountHeading(text: account.name, swatch: swatch)
+            AccountLabel(text: account.name, swatch: swatch)
             Spacer(minLength: 8)
+            Text("Signed out")
+                .font(.caption2).foregroundStyle(Color.subtleText)
             Button("Sign In") {
                 (NSApp.delegate as? AppDelegate)?.showLoginWindow(for: account)
             }
-            .buttonStyle(.link)
-            .font(.caption)
+            .controlSize(.small)
         }
+        .card(swatch)
     }
 }
 
-// MARK: - An account's name
+// MARK: - Cards
 
-// In the account's color when it has one, so a block reads as that account
-// before its name does. The bars keep their own colors: those say on pace,
-// getting close, or over, and an account colored red would otherwise look
-// permanently in trouble.
-struct AccountHeading: View {
+// The rounded tile each account, and today's sessions, sits on. An account's
+// color tints it faintly, so a card reads as that account before its name
+// does. The bars keep their own colors: those say on pace, getting close or
+// over, and an account colored red would otherwise look permanently in
+// trouble.
+private struct Card: ViewModifier {
+    let swatch: Color?
+
+    func body(content: Content) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        content
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(shape.fill(swatch?.opacity(0.16) ?? Color.primary.opacity(0.05)))
+            .overlay(shape.strokeBorder(swatch?.opacity(0.4) ?? Color.primary.opacity(0.08),
+                                        lineWidth: 0.5))
+    }
+}
+
+extension View {
+    fileprivate func card(_ swatch: Color?) -> some View { modifier(Card(swatch: swatch)) }
+}
+
+// An account's name, led by a dot of its color when it has one.
+struct AccountLabel: View {
     let text: String
     let swatch: Color?
 
     var body: some View {
-        if let swatch {
+        HStack(spacing: 6) {
+            if let swatch {
+                Circle().fill(swatch).frame(width: 8, height: 8)
+            }
             Text(text)
                 .font(.subheadline).fontWeight(.semibold)
-                .foregroundStyle(swatch.readableText)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(Capsule().fill(swatch))
-        } else {
-            Text(text)
-                .font(.subheadline).fontWeight(.semibold)
-                .foregroundStyle(Color.subtleText)
+                .lineLimit(1)
         }
     }
 }
 
-// MARK: - One workspace's block of bars
+// MARK: - One workspace's card
 
+// Compact by default: one line per limit and one line of reset times.
+// Clicking the card opens it to the detailed rows — pace, reset and history
+// under every bar — and clicking again closes it.
 struct WorkspaceSection: View {
     let workspace: WorkspaceUsage
-    // From WorkspaceUsage.heading(among:); nil when there's nothing to tell apart.
+    // From WorkspaceUsage.heading(among:); nil when there's nothing to tell
+    // apart, and the card then carries the account's own name.
     let heading: String?
     let swatch: Color?
+    let expanded: Bool
+    let onToggle: () -> Void
+    @ObservedObject private var prefs = Preferences.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if let heading {
-                AccountHeading(text: heading, swatch: swatch)
+        VStack(alignment: .leading, spacing: expanded ? 12 : 7) {
+            HStack(spacing: 6) {
+                AccountLabel(text: heading ?? workspace.providerName, swatch: swatch)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(expanded ? 180 : 0))
             }
 
-            if let session = workspace.session {
-                UsageRowView(metric: session, resetStyle: .countdown,
-                             providerID: workspace.providerID)
-            }
-            if let weekly = workspace.weeklyAll {
-                UsageRowView(metric: weekly, resetStyle: .date,
-                             providerID: workspace.providerID)
-            }
-            // Per-model weekly caps — Fable and friends appear here automatically.
-            ForEach(workspace.weeklyModels) { model in
-                UsageRowView(metric: model, resetStyle: .date,
-                             providerID: workspace.providerID)
+            if expanded {
+                if let session = workspace.session {
+                    UsageRowView(metric: session, resetStyle: .countdown,
+                                 providerID: workspace.providerID)
+                }
+                if let weekly = workspace.weeklyAll {
+                    UsageRowView(metric: weekly, resetStyle: .date,
+                                 providerID: workspace.providerID)
+                }
+                // Per-model weekly caps — Fable and friends appear here automatically.
+                ForEach(workspace.weeklyModels) { model in
+                    UsageRowView(metric: model, resetStyle: .date,
+                                 providerID: workspace.providerID)
+                }
+            } else {
+                ForEach(workspace.allMetrics) { metric in
+                    CompactUsageRow(metric: metric)
+                }
+                if let resets = resetsLine {
+                    Text(resets)
+                        .font(.caption2)
+                        .foregroundStyle(Color.subtleText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
             }
 
             if workspace.extraEnabled {
@@ -297,13 +345,101 @@ struct WorkspaceSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        // A rail down the block's edge, in the popover's side padding, so the
-        // color still says whose bars these are once the heading has scrolled
-        // away.
-        .background(alignment: .leading) {
-            if let swatch {
-                Capsule().fill(swatch).frame(width: 3).offset(x: -9)
+        .card(swatch)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onToggle)
+        .help(expanded ? "Click for less" : "Click for pace, resets and history")
+    }
+
+    // When the session and the week reset, on one line rather than under every
+    // bar: "Resets 9:29 PM · week Oct 31, 4:00 AM".
+    private var resetsLine: String? {
+        let week = (workspace.weeklyAll ?? workspace.weeklyModels.first)?.resetAt
+        guard let session = workspace.session?.resetAt else {
+            return week.map { "Week resets \(DateUtils.resetDate($0))" }
+        }
+        let first = prefs.showEndTimes ? "Resets \(DateUtils.clockTime(session))"
+                                       : "Resets in \(DateUtils.mediumCountdown(to: session))"
+        return week.map { "\(first) · week \(DateUtils.resetDate($0))" } ?? first
+    }
+}
+
+// MARK: - One limit on one line
+
+// Name, bar, percent. A pace line follows only when the limit is on course to
+// run out; everything else the detailed row says is a click away, and its
+// reset is in the tooltip.
+struct CompactUsageRow: View {
+    let metric: UsageMetric
+    @ObservedObject private var prefs = Preferences.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text(metric.shortLabel)
+                    .font(.caption)
+                    .foregroundStyle(Color.subtleText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(width: 50, alignment: .leading)
+                UsageBar(percent: metric.percent, color: metric.severityColor, height: 5)
+                Text("\(metric.percent)%")
+                    .font(.caption).fontWeight(.semibold)
+                    .monospacedDigit()
+                    .foregroundStyle(metric.severityColor)
+                    .frame(width: 34, alignment: .trailing)
             }
+            if let warning {
+                Text(warning)
+                    .font(.caption2)
+                    .foregroundStyle(metric.severityColor)
+                    .padding(.leading, 58)
+            }
+        }
+        .help(metric.resetAt.map { "\(metric.label) · resets \(DateUtils.resetDate($0))" } ?? metric.label)
+    }
+
+    private var warning: String? {
+        switch metric.forecast {
+        case .atLimit:
+            return "At limit"
+        case .willHit(_, let runsOut):
+            return prefs.showEndTimes
+                ? "Runs out around \(DateUtils.clockTime(Date().addingTimeInterval(runsOut)))"
+                : "About \(DateUtils.duration(runsOut)) left at this pace"
+        case .unknown, .warmingUp, .safe:
+            return nil
+        }
+    }
+}
+
+// A bar that fills to a percentage: a capsule on a faint track, never thinner
+// than a dot so an empty limit still reads as a bar.
+struct UsageBar: View {
+    let percent: Int
+    let color: Color
+    var height: CGFloat = 8
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.1))
+                Capsule().fill(color)
+                    .frame(width: max(height, geo.size.width * CGFloat(min(percent, 100)) / 100))
+                    .animation(.easeInOut(duration: 0.4), value: percent)
+            }
+        }
+        .frame(height: height)
+    }
+}
+
+extension UsageMetric {
+    // On pace, getting close, over: the bar's and the percentage's color.
+    var severityColor: Color {
+        switch severity(percent: percent, forecast: forecast) {
+        case .ok:     return .accentColor
+        case .warn:   return .orange
+        case .danger: return .red
         }
     }
 }
@@ -324,13 +460,7 @@ struct UsageRowView: View {
         UsageHistory.shared.series(providerID: providerID, metricKey: metric.key, limit: 12)
     }
 
-    private var barColor: Color {
-        switch severity(percent: metric.percent, forecast: metric.forecast) {
-        case .ok:     return .accentColor
-        case .warn:   return .orange
-        case .danger: return .red
-        }
-    }
+    private var barColor: Color { metric.severityColor }
 
     // The pace forecast, when it has something to say. Shown *in addition to*
     // the reset line — never instead of it.
@@ -405,28 +535,17 @@ struct UsageRowView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
-                Text(metric.label).font(.callout).fontWeight(.medium)
+                Text(metric.label).font(.subheadline).fontWeight(.medium)
                 Spacer()
                 Text("\(metric.percent)%")
-                    .font(.callout).fontWeight(.semibold)
+                    .font(.subheadline).fontWeight(.semibold)
                     .foregroundStyle(barColor)
                     .monospacedDigit()
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.secondary.opacity(0.15))
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(barColor)
-                        .frame(width: max(6, geo.size.width * CGFloat(metric.percent) / 100))
-                        .animation(.easeInOut(duration: 0.4), value: metric.percent)
-                }
-                .frame(height: 8)
-            }
-            .frame(height: 8)
+            UsageBar(percent: metric.percent, color: barColor, height: 6)
 
             // Both lines wrap rather than truncate. Without fixedSize SwiftUI
             // compresses them to one line inside the fixed-width popover, and
