@@ -98,6 +98,15 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Codex") {
+                Toggle("Show Codex usage", isOn: $prefs.showCodex)
+                    .disabled(!CodexProvider.isInstalled)
+                Text(CodexProvider.isInstalled
+                     ? "Read from the Codex CLI's own sign-in. Sign in with `codex login` in a terminal."
+                     : "The Codex CLI isn't installed on this Mac.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+
             Section("Local Models") {
                 Toggle("Watch Ollama and LM Studio", isOn: $prefs.watchLocalLLMs)
                 Toggle("Notify when a local job finishes", isOn: $prefs.notifyLocalDone)

@@ -32,6 +32,8 @@ final class Preferences: ObservableObject {
     @Published var showEndTimes: Bool { didSet { defaults.set(showEndTimes, forKey: "showEndTimes") } }
 
     // Local LLM monitoring (Ollama / LM Studio)
+    // Codex's limits, read from the Codex CLI's sign-in.
+    @Published var showCodex: Bool { didSet { defaults.set(showCodex, forKey: "showCodex") } }
     @Published var watchLocalLLMs: Bool  { didSet { defaults.set(watchLocalLLMs, forKey: "watchLocalLLMs") } }
     @Published var notifyLocalDone: Bool { didSet { defaults.set(notifyLocalDone, forKey: "notifyLocalDone") } }
     // Prompt text is the one genuinely sensitive thing we surface, so it gets its
@@ -50,6 +52,7 @@ final class Preferences: ObservableObject {
             "menuBarRings": ["session", "weekly_all"],   // exactly today's icon
             "menuBarLabelStyle": MenuBarLabelStyle.full.rawValue,
             "showEndTimes": true,
+            "showCodex": true,
             "watchLocalLLMs": true,
             "notifyLocalDone": true,
             "showLocalTitles": true,
@@ -64,6 +67,7 @@ final class Preferences: ObservableObject {
         menuBarMetrics  = defaults.stringArray(forKey: "menuBarMetrics") ?? ["session"]
         menuBarLabelStyle = MenuBarLabelStyle(rawValue: defaults.string(forKey: "menuBarLabelStyle") ?? "") ?? .full
         showEndTimes    = defaults.bool(forKey: "showEndTimes")
+        showCodex       = defaults.bool(forKey: "showCodex")
         watchLocalLLMs  = defaults.bool(forKey: "watchLocalLLMs")
         notifyLocalDone = defaults.bool(forKey: "notifyLocalDone")
         showLocalTitles = defaults.bool(forKey: "showLocalTitles")

@@ -54,6 +54,7 @@ final class UsageForecaster {
     }
 
     func update(key: String, percent: Int?, resetAt: Date?,
+                windowLength: TimeInterval? = nil,
                 now: Date = Date()) -> ForecastVerdict {
         guard let pctInt = percent, let resetAt else { return .unknown }
         let pct = Double(pctInt)
@@ -62,7 +63,7 @@ final class UsageForecaster {
         let timeUntilReset = resetAt.timeIntervalSince(now)
         guard timeUntilReset > 0 else { return .unknown }
 
-        let windowLength = Self.windowLength(forKey: key)
+        let windowLength = windowLength ?? Self.windowLength(forKey: key)
         let windowStart = resetAt.addingTimeInterval(-windowLength)
         let elapsed = now.timeIntervalSince(windowStart)
         guard elapsed > 0, pct > 0 else { return .unknown }

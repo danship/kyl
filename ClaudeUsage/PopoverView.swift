@@ -381,7 +381,7 @@ struct CompactUsageRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 8) {
-                Text(metric.shortLabel)
+                Text(metric.cardLabel)
                     .font(.caption)
                     .foregroundStyle(Color.subtleText)
                     .lineLimit(1)
@@ -529,7 +529,8 @@ struct UsageRowView: View {
             // opened, not a fixed clock — so when it opened is half the story,
             // and it's the half nobody can see. Start work an hour before a
             // window closes and you get an hour of it, not five.
-            let opened = reset.addingTimeInterval(-UsageForecaster.windowLength(forKey: metric.key))
+            let opened = reset.addingTimeInterval(-(metric.windowLength
+                                                     ?? UsageForecaster.windowLength(forKey: metric.key)))
             if prefs.showEndTimes {
                 return "Opened \(DateUtils.clockTime(opened)) · resets \(DateUtils.clockTime(reset))"
             }
@@ -542,7 +543,8 @@ struct UsageRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline) {
-                Text(metric.label).font(.subheadline).fontWeight(.medium)
+                Text(metric.cardLabel == metric.shortLabel ? metric.label : metric.cardLabel)
+                    .font(.subheadline).fontWeight(.medium)
                 Spacer()
                 Text("\(metric.percent)%")
                     .font(.subheadline).fontWeight(.semibold)

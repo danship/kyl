@@ -77,6 +77,12 @@ class UsageViewModel: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] busy in self?.localBusy = busy }
             .store(in: &cancellables)
+        Preferences.shared.$showCodex
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.buildProviders() }
+            .store(in: &cancellables)
+
         applyLocalPreference(Preferences.shared.watchLocalLLMs)
         Preferences.shared.$watchLocalLLMs
             .dropFirst()
@@ -169,7 +175,25 @@ class UsageViewModel: ObservableObject {
             guard let c = p as? ClaudeProvider else { return false }
             return !wanted.contains { $0.id == c.account.id }
         }
+        buildCodexProvider()
         rebuildWorkspaces()
+    }
+
+    // Codex rides on the CLI's own sign-in, so there is no account to add:
+    // it is on while the preference says so and the CLI is installed.
+    private func buildCodexProvider() {
+        let wanted = Preferences.shared.showCodex && CodexProvider.isInstalled
+        let existing = providers.first { $0 is CodexProvider }
+        if wanted, existing == nil {
+            let provider = CodexProvider()
+            let key = provider.id
+            provider.onUsage = { [weak self] list in self?.apply(list, from: key) }
+            provider.start()
+            providers.append(provider)
+        } else if !wanted, existing != nil {
+            providers.removeAll { $0 is CodexProvider }
+            resultsByProvider[CodexProvider.providerID] = nil
+        }
     }
 
     // Call after a successful sign-in for one account.
@@ -196,6 +220,7 @@ class UsageViewModel: ObservableObject {
     // the way back in.
     var allSignedOut: Bool {
         !pendingLogins.isEmpty && pendingLogins.count >= AccountStore.shared.accounts.count
+            && !providers.contains { $0 is CodexProvider }
     }
 
     // Workspaces from accounts that are signed in. A signed-out account's last
@@ -280,7 +305,8 @@ class UsageViewModel: ObservableObject {
 
     private func forecasted(_ metric: UsageMetric?, scope: String) -> UsageMetric? {
         guard var m = metric else { return nil }
-        m.forecast = forecaster.update(key: "\(scope).\(m.key)", percent: m.percent, resetAt: m.resetAt)
+        m.forecast = forecaster.update(key: "\(scope).\(m.key)", percent: m.percent, resetAt: m.resetAt,
+                                       windowLength: m.windowLength)
         return m
     }
 

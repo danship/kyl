@@ -20,6 +20,9 @@ struct UsageMetric: Identifiable, Equatable {
     var percent: Int
     var resetAt: Date?
     var forecast: ForecastVerdict = .unknown
+    // How long this limit's window is, when the service says. Claude's are
+    // known by key (see UsageForecaster.windowLength); Codex reports its own.
+    var windowLength: TimeInterval? = nil
 
     var id: String { key }
 
@@ -27,9 +30,21 @@ struct UsageMetric: Identifiable, Equatable {
     // shortened. Per-model caps ("Fable") are already short enough to keep.
     var shortLabel: String {
         switch key {
-        case "session":    return "Session"
-        case "weekly_all": return "Week"
-        default:           return label
+        case "session":       return "Session"
+        case "weekly_all":    return "Week"
+        case "codex_session": return "Codex 5h"
+        case "codex_weekly":  return "Codex wk"
+        default:              return label
+        }
+    }
+
+    // Inside its own card the service's name is already the heading, so a
+    // Codex limit reads as plainly as a Claude one.
+    var cardLabel: String {
+        switch key {
+        case "codex_session": return "Session"
+        case "codex_weekly":  return "Week"
+        default:              return shortLabel
         }
     }
 
@@ -37,9 +52,11 @@ struct UsageMetric: Identifiable, Equatable {
     // session and W for the week; a per-model cap uses its own first letter.
     var initialLabel: String {
         switch key {
-        case "session":    return "C"
-        case "weekly_all": return "W"
-        default:           return String(label.prefix(1)).uppercased()
+        case "session":       return "C"
+        case "weekly_all":    return "W"
+        case "codex_session": return "X"
+        case "codex_weekly":  return "XW"
+        default:              return String(label.prefix(1)).uppercased()
         }
     }
 
