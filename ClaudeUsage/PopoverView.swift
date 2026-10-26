@@ -93,6 +93,11 @@ struct PopoverView: View {
             .padding(.vertical, 10)
         }
         .frame(width: 300)
+        // Near-opaque charcoal under everything. The popover's own material
+        // is a blur of the desktop, which is where the text got hard to
+        // read; a trace of it still shows so the panel sits on the screen
+        // rather than on top of it.
+        .background(Color.panel.ignoresSafeArea())
     }
 
     // What the screen leaves for the scrolling part: the menu bar, the
@@ -252,8 +257,8 @@ private struct Card: ViewModifier {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(shape.fill(swatch?.opacity(0.16) ?? Color.primary.opacity(0.05)))
-            .overlay(shape.strokeBorder(swatch?.opacity(0.4) ?? Color.primary.opacity(0.08),
+            .background(shape.fill(swatch?.opacity(0.11) ?? Color.primary.opacity(0.06)))
+            .overlay(shape.strokeBorder(swatch?.opacity(0.3) ?? Color.primary.opacity(0.1),
                                         lineWidth: 0.5))
     }
 }

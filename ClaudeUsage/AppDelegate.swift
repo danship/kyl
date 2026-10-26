@@ -87,6 +87,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         popover = NSPopover()
         popover.contentSize = NSSize(width: 280, height: 240)
         popover.behavior = .transient
+        // Always dark: the popover is read against whatever is behind the
+        // menu bar, and a translucent light panel over a busy desktop let
+        // the wallpaper compete with the numbers. PopoverView lays its own
+        // near-opaque charcoal behind the content; this keeps the arrow,
+        // the controls and the system text colors on the same side.
+        popover.appearance = NSAppearance(named: .darkAqua)
         popover.contentViewController = NSHostingController(
             rootView: PopoverView().environmentObject(viewModel)
         )
