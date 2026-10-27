@@ -16,7 +16,7 @@ XCODEBUILD="/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild"
 [ -x "$XCODEBUILD" ] || XCODEBUILD="$(xcode-select -p)/usr/bin/xcodebuild"
 
 BUILD="./.release-build"
-APP="$BUILD/Build/Products/Release/Juicage.app"
+APP="$BUILD/Build/Products/Release/KYL.app"
 NOTARY_PROFILE="tally"   # created by: xcrun notarytool store-credentials "tally"
 # ZIP name is set after the build, so it can carry the app's version number.
 
@@ -89,19 +89,19 @@ fi
 # Every release before 1.6.1 shipped arm64-only — "platform=macOS" builds just
 # the machine's own architecture, so Intel Macs could not run it at all and
 # nothing in the pipeline noticed. Check rather than trust.
-if ! lipo -info "$APP/Contents/MacOS/Juicage" 2>/dev/null | grep -q "x86_64 arm64\|arm64 x86_64"; then
-  echo "❌ not a universal binary: $(lipo -info "$APP/Contents/MacOS/Juicage" 2>&1)"
+if ! lipo -info "$APP/Contents/MacOS/KYL" 2>/dev/null | grep -q "x86_64 arm64\|arm64 x86_64"; then
+  echo "❌ not a universal binary: $(lipo -info "$APP/Contents/MacOS/KYL" 2>&1)"
   echo "   Intel Macs would not be able to run this. Refusing to package."
   exit 1
 fi
-echo "  universal binary ✓ ($(lipo -info "$APP/Contents/MacOS/Juicage" 2>&1 | sed 's/.*are: //'))"
+echo "  universal binary ✓ ($(lipo -info "$APP/Contents/MacOS/KYL" 2>&1 | sed 's/.*are: //'))"
 
 echo "Packaging…"
 # Name the zip after the app's actual version, so a downloaded file identifies
-# itself (Juicage-1.4.zip) instead of every release being a generic "Juicage.zip".
-ABS_APP="$(cd "$(dirname "$APP")" && pwd)/Juicage.app"
+# itself (KYL-1.9.2.zip) instead of every release being a generic "KYL.zip".
+ABS_APP="$(cd "$(dirname "$APP")" && pwd)/KYL.app"
 VERSION="$(defaults read "$ABS_APP/Contents/Info" CFBundleShortVersionString 2>/dev/null || echo dev)"
-ZIP="$HOME/Desktop/Juicage-$VERSION.zip"
+ZIP="$HOME/Desktop/KYL-$VERSION.zip"
 
 rm -f "$ZIP"
 # Strip any quarantine flag before zipping so we don't ship it to recipients.
@@ -146,10 +146,10 @@ fi
 # 1.6 and 1.6.1 arrived on another Mac as "Juicage is damaged and can't be
 # opened". Reproduced locally — `unzip` breaks it, `ditto` and a DMG don't.
 # A disk image reproduces the bundle exactly however the user opens it.
-DMG="$HOME/Desktop/Juicage-$VERSION.dmg"
+DMG="$HOME/Desktop/KYL-$VERSION.dmg"
 rm -f "$DMG"
 echo "Building disk image…"
-./packaging/make-dmg.sh "$APP" "$DMG" "Juicage"
+./packaging/make-dmg.sh "$APP" "$DMG" "KYL"
 if [ -n "$SIGN_ID" ]; then
   codesign --force --timestamp --sign "$SIGN_ID" "$DMG"
   if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then

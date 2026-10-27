@@ -93,7 +93,7 @@ final class CodexProvider: UsageProvider {
             input.fileHandleForWriting.write("\n".data(using: .utf8)!)
         }
         send(["jsonrpc": "2.0", "id": 1, "method": "initialize",
-              "params": ["clientInfo": ["name": "juicage", "title": "Juicage",
+              "params": ["clientInfo": ["name": "kyl", "title": "KYL",
                                         "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "0"]]])
         send(["jsonrpc": "2.0", "method": "initialized"])
         send(["jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read",

@@ -235,12 +235,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
-    // "Juicage 1.6.2" — disabled, purely a label. Version confusion is the first
+    // "KYL 1.9.2" — disabled, purely a label. Version confusion is the first
     // thing that comes up whenever someone reports a problem, so it's worth the
     // zero clicks it takes to read it here.
     private var versionMenuItem: NSMenuItem {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        let item = NSMenuItem(title: "Juicage \(short)", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: "KYL \(short)", action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
     }
@@ -273,20 +273,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         prefsItem.target = self
         menu.addItem(prefsItem)
 
-        let update = NSMenuItem(title: "Check for Updates…", action: #selector(menuCheckForUpdates), keyEquivalent: "")
+        // KYL takes no in-app updates (UpdateController), so this opens the
+        // releases of Juicage, the app it forks, to see what is new there.
+        let update = NSMenuItem(title: "Juicage Releases…", action: #selector(menuCheckForUpdates), keyEquivalent: "")
         update.target = self
         update.isEnabled = UpdateController.shared.canCheckForUpdates
         menu.addItem(update)
 
         menu.addItem(.separator())
 
-        let about = NSMenuItem(title: "About Juicage", action: #selector(menuAbout), keyEquivalent: "")
+        let about = NSMenuItem(title: "About KYL", action: #selector(menuAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(about)
 
         menu.addItem(.separator())
 
-        let quit = NSMenuItem(title: "Quit Juicage", action: #selector(menuQuit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "Quit KYL", action: #selector(menuQuit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 
@@ -313,11 +315,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // An accessory app has no menu bar of its own, so the panel opens behind
         // everything unless we activate first.
         NSApp.activate(ignoringOtherApps: true)
+        // The panel also shows Credits.html from the bundle: the full MIT
+        // notice of Juicage, which KYL forks and must carry in every copy.
         NSApp.orderFrontStandardAboutPanel(options: [
-            .applicationName: "Juicage",
+            .applicationName: "KYL",
             .applicationVersion: short,
             .version: build,
-            .init(rawValue: "Copyright"): "An unofficial usage meter for claude.ai.\nNot affiliated with Anthropic.",
+            .init(rawValue: "Copyright"): "An unofficial usage meter for Claude and Codex.\nBased on Juicage © 2026 Ryan Barnett, MIT License.\nNot affiliated with Anthropic or OpenAI.",
         ])
     }
 
@@ -335,7 +339,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let hosting = NSHostingController(
                 rootView: SettingsView().environmentObject(viewModel))
             let win = NSWindow(contentViewController: hosting)
-            win.title = "Juicage Preferences"
+            win.title = "KYL Preferences"
             win.styleMask = [.titled, .closable]
             win.isReleasedWhenClosed = false
             win.center()

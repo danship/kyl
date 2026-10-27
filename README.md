@@ -1,50 +1,37 @@
-# Juicage
+# KYL
 
-**A usage meter for [Claude.ai](https://claude.ai).**
+**A usage meter for [Claude.ai](https://claude.ai) and Codex.**
 
-*Juicage was called Tally through v1.4.1. Same app — update in place and your sign-in and settings carry over.*
+A lightweight macOS **menu bar app** that shows your live Claude.ai usage — for
+several accounts at once — and Codex's, at a glance: session, weekly, and
+per-model limits as rings in each account's color, and a forecast of whether
+you're on pace to hit a limit. It also shows when a **local** model (Ollama or
+LM Studio) is working. No dock icon; it runs quietly in the background and
+refreshes on its own.
 
-A lightweight macOS **menu bar app** that shows your live Claude.ai usage at a
-glance — session, weekly, and per-model limits — with colored rings that fill as
-you go and a forecast of whether you're on pace to hit a limit. It also shows
-when a **local** model (Ollama or LM Studio) is working. No dock icon; it runs
-quietly in the background and refreshes on its own.
+KYL is a fork of [Juicage](https://github.com/ryanbarnett-2am/Juicage) by Ryan
+Barnett, under its MIT license (see [License](#license)); the app's About box
+credits it too.
 
-<p align="center">
-  <img src="docs/images/popover.png" width="320"
-       alt="The Juicage popover: a current session at 3% with a pace forecast, a
-            weekly all-models bar, a Fable bar at 31% forecast in red to run out
-            tomorrow evening, a history chart of the last 12 windows with one
-            maxed out, a strip of today's session windows, and a row showing a
-            local model working.">
-</p>
-
-> **Unofficial.** Juicage is not affiliated with, endorsed by, or supported by
-> Anthropic. "Claude" is a trademark of Anthropic; it's used here only to
-> describe what the app works with. Juicage reads usage data from claude.ai's own
+> **Unofficial.** KYL is not affiliated with, endorsed by, or supported by
+> Anthropic or OpenAI. "Claude" is a trademark of Anthropic; it's used here only
+> to describe what the app works with. KYL reads usage data from claude.ai's own
 > web session using an **undocumented internal API**, which can change or stop
 > working at any time. Use at your own discretion and in line with Anthropic's
 > Terms of Service.
 
-> **Why you'll see "Tally" in file paths.** Juicage was called Tally until v1.5.
-> The bundle identifier stayed `twoam.Tally` on purpose — macOS keys your saved
-> sign-in and settings to it, so renaming it would sign every existing user out.
-> That's why the app stores things under `~/Library/*/twoam.Tally/`. Nothing is
-> sent anywhere; it's all local.
+> **Why you'll see "Tally" in file paths.** Juicage was called Tally until v1.5,
+> and KYL keeps its bundle identifier, `twoam.Tally`, on purpose — macOS keys
+> your saved sign-in and settings to it, so changing it would sign every
+> account out. That's why the app stores things under `~/Library/*/twoam.Tally/`.
+> Nothing is sent anywhere; it's all local.
 
 ## Install
 
-```sh
-brew install --cask ryanbarnett-2am/juicage/juicage
-```
+KYL has no releases and doesn't update itself: build it from source (see
+[Build & run](#build--run)) and copy `KYL.app` into Applications.
 
-Or download the `.dmg` from [Releases](https://github.com/ryanbarnett-2am/Juicage/releases/latest),
-open it, and drag Juicage into Applications. Releases are signed with an Apple
-Developer ID and notarized, so there's no security prompt to click through.
-
-Juicage updates itself after that — `brew upgrade` is optional.
-
-Requires **macOS 13 (Ventura) or later**. Universal (Apple Silicon and Intel).
+Requires **macOS 13 (Ventura) or later**; several accounts at once need macOS 14.
 
 ## Features
 
@@ -155,7 +142,7 @@ structured data the settings page uses.
 
 Neither engine has an "am I busy" API, and both keep a model resident in memory
 for several minutes after the work finishes — so keying off "a model is loaded"
-would leave the indicator lit all afternoon. Juicage uses the one signal each
+would leave the indicator lit all afternoon. KYL uses the one signal each
 engine actually exposes:
 
 - **Ollama** — tails `~/.ollama/logs/server.log`, which brackets every request
@@ -168,10 +155,10 @@ pin the indicator on indefinitely.
 
 ## Why the app isn't sandboxed
 
-Juicage is **not** App Sandboxed, and that's deliberate: the local-model feature
+KYL is **not** App Sandboxed, and that's deliberate: the local-model feature
 cannot work inside the sandbox. Reading Ollama's log file and running the `lms`
 CLI are both blocked by it, and neither engine exposes that information over
-HTTP. Sandboxed, all Juicage could report is "a model is loaded" — which, as
+HTTP. Sandboxed, all KYL could report is "a model is loaded" — which, as
 above, stays true for minutes after the work ends.
 
 If you'd rather keep the sandbox than have the feature, set
@@ -189,29 +176,27 @@ Requires **Xcode** and **macOS 13 (Ventura) or later**. No Apple Developer
 account is needed — the project signs ad-hoc, so a clean checkout builds as-is.
 
 1. Open `ClaudeUsage.xcodeproj` in Xcode. *(The Xcode project keeps its original
-   codename; the app it builds is **Juicage**.)*
+   codename; the app it builds is **KYL**.)*
 2. Press **⌘R** to build and run.
 3. The first launch shows a sign-in window — log into claude.ai once. Your login
    is remembered after that.
 
 To build a shareable copy, run `./package-release.sh`, which produces
-`Juicage-<version>.zip` on your Desktop.
+`KYL-<version>.zip` on your Desktop.
 
-Builds you make yourself are signed **ad-hoc**, so a copy
-moved to another Mac needs a one-time right-click → **Open** to get past
-Gatekeeper. Official **Releases** are signed with a Developer ID and notarized
-by Apple, so those just double-click open.
+Builds you make yourself are signed **ad-hoc**, so a copy downloaded onto
+another Mac needs a one-time right-click → **Open** to get past Gatekeeper.
 
 ## Privacy
 
-Juicage talks to `claude.ai` and `status.claude.com`, plus `127.0.0.1` for the
+KYL talks to `claude.ai` and `status.claude.com`, plus `127.0.0.1` for the
 local model engines. Nothing goes to any third party, and there are **no API
 keys or credentials in the code** — your login lives in the app's own web-view
 cookie store on your Mac.
 
 The local-model feature reads data that never leaves your machine: Ollama's log
 file and LM Studio's CLI output. Be aware that LM Studio's stream includes
-**your prompt text**, which Juicage displays as the task title and may include in
+**your prompt text**, which KYL displays as the task title and may include in
 a "finished" notification. It is never stored or transmitted, and *Show what
 it's working on* in Preferences turns it off.
 
@@ -236,4 +221,5 @@ change as well; if they do, the indicator simply stops appearing.
 
 ## License
 
-[MIT](LICENSE) © 2026 Ryan Barnett
+[MIT](LICENSE) © 2026 Ryan Barnett — Juicage's license, which KYL keeps as a
+fork of it. The built app carries the same notice in its About box.
