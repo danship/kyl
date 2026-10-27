@@ -108,6 +108,34 @@ Requires **macOS 13 (Ventura) or later**. Universal (Apple Silicon and Intel).
   job is running. Ollama never records prompt text, so it shows the model name.
 - Entirely optional — switch it off in Preferences.
 
+### Usage as JSON, for other apps
+
+Everything the popover shows is also written to a file another app can read:
+
+```sh
+~/Library/Application\ Support/twoam.Tally/usage.json
+```
+
+It is rewritten whenever the numbers change or an account signs in or out, by
+replacing the file whole, so a reader never sees half of one and a watcher on
+the folder sees one change per update. For example:
+
+```sh
+jq -r '.accounts[] | "\(.name): \([.workspaces[].limits[] | "\(.label) \(.percent)%"] | join(", "))"' \
+  ~/Library/Application\ Support/twoam.Tally/usage.json
+```
+
+The document is `updatedAt` plus `accounts`, Claude accounts in the order
+Preferences lists them and then Codex. Each account has an `id`, `service`
+(`claude` or `codex`), `name`, `color` (`#RRGGBB`, when it has one),
+`signedIn` and `workspaces`; each workspace has its `limits`, and each limit
+its `key`, `label`, `percent`, `resetsAt`, `severity` (`ok`, `warn` or
+`danger`, the bar's color) and `pace` (`unknown`, `calculating`, `onTrack`,
+`willRunOut` or `atLimit`), with `projectedPercent` or `runsOutAt` when the
+pace has one. Dates are ISO 8601. Keys are only ever added, values that don't
+apply are left out rather than written as `null`, and there is no version
+number to check: read the keys you know.
+
 ## How it works
 
 ### Claude.ai
@@ -188,6 +216,10 @@ it's working on* in Preferences turns it off.
 An account linked to a Chrome profile reads Chrome's own files on your Mac —
 the profile list, that profile's theme setting and the theme's colors — to
 borrow its color. Only the color is kept, and nothing is sent anywhere.
+
+The usage file (see *Usage as JSON*) holds account and workspace names,
+colors and the numbers — no cookies, no tokens, and none of a local model's
+prompt text. It sits in your own Library, readable by apps you run.
 
 ## A note on reliability
 

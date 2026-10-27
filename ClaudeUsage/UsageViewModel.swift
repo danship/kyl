@@ -43,6 +43,21 @@ class UsageViewModel: ObservableObject {
     private let staleAfter: TimeInterval = 15 * 60
 
     func start() {
+        // Other apps read what the popover shows from a JSON file, rewritten
+        // whenever the numbers change or an account signs in or out. Account
+        // renames and colors arrive as a change to the numbers: buildProviders
+        // ends in rebuildWorkspaces.
+        Publishers.CombineLatest($workspaces, $pendingLogins)
+            .receive(on: RunLoop.main)
+            .sink { workspaces, pending in
+                // Nothing has loaded yet at launch; the last file written is
+                // truer than an empty one until the first answer arrives.
+                guard !workspaces.isEmpty || !pending.isEmpty else { return }
+                UsageExport.write(workspaces: workspaces, accounts: AccountStore.shared.accounts,
+                                  pending: pending)
+            }
+            .store(in: &cancellables)
+
         buildProviders()
         // Adding or removing an account rebuilds the provider list in place.
         AccountStore.shared.$accounts
