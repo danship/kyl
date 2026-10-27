@@ -62,11 +62,13 @@ Requires **macOS 13 (Ventura) or later**. Universal (Apple Silicon and Intel).
   Week 71%"**. Three named limits is a wide menu bar and a 14-inch screen
   hasn't got it to spare, so the names can shrink to initials — **"C:42% W:71%
   F:12%"** — or go entirely: **"42% · 71% · 12%"**.
-- **Detail popover** — a compact card per account: one line each for the
-  current session, the weekly all-models cap and each per-model cap (e.g.
-  Fable), and one line of reset times. Click a card for its pace forecasts,
-  reset times and history in full. Every workspace your login belongs to is
-  shown.
+- **Detail popover** — each account as three concentric rings in its color:
+  the current session outermost, then the weekly all-models cap, then a
+  per-model cap (e.g. Fable), so a ring means the same thing on every account
+  and needs no label. The fullest number sits in the middle; a limit getting
+  close glows softly and one over pace glows strongly. Click an account for
+  its pace forecasts, reset times and history in full. An account that needs
+  signing in again keeps its last rings, dimmed, with a Sign In link.
 - **Several accounts, each in its own color** — sign in to more than one
   claude.ai account and each gets its own card. Give an account a color in
   Preferences → Accounts, or link it to a Chrome profile and it wears that

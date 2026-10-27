@@ -8,9 +8,9 @@ struct PopoverView: View {
     // view so the popover can be exactly that tall until it runs out of screen.
     @State private var usageHeight: CGFloat = 0
 
-    // Cards opened to their detailed rows, by workspace id. Every card starts
-    // compact each launch.
-    @State private var expanded: Set<String> = []
+    // The account whose card is open under the rings, by provider id. None is
+    // open at each launch.
+    @State private var selected: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -155,21 +155,44 @@ struct PopoverView: View {
 
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                // An account that needs signing in again gets a card of its
-                // own, so the others keep showing their numbers.
-                ForEach(viewModel.pendingLogins) { account in
-                    PendingSignInRow(account: account,
-                                     swatch: viewModel.account(forProvider: ClaudeProvider.id(for: account))?.swatch)
-                }
                 usage
             }
         }
     }
 
+    // Every account as a ring tile: the Claude accounts in the order
+    // Preferences lists them, signed in or not, then any other service that
+    // has reported (Codex), the order kyl's usage file uses too. An account
+    // waiting on a sign-in keeps its last rings, dimmed, with the way back in.
+    private var tiles: [RingTile.Model] {
+        let pending = Set(viewModel.pendingLogins.map(\.id))
+        let claude = AccountStore.shared.accounts.map { account -> RingTile.Model in
+            let id = ClaudeProvider.id(for: account)
+            return RingTile.Model(id: id, name: account.name, swatch: account.swatch,
+                                  rings: WorkspaceUsage.rings(of: viewModel.workspaces.filter { $0.providerID == id }),
+                                  signedOut: pending.contains(account.id) ? account : nil)
+        }
+        let claudeIDs = Set(claude.map(\.id))
+        var seen = Set<String>()
+        let others = viewModel.workspaces
+            .filter { !claudeIDs.contains($0.providerID) && seen.insert($0.providerID).inserted }
+            .map { ws in
+                RingTile.Model(id: ws.providerID, name: ws.providerName, swatch: nil,
+                               rings: WorkspaceUsage.rings(of: viewModel.workspaces.filter { $0.providerID == ws.providerID }),
+                               signedOut: nil)
+            }
+        return claude + others
+    }
+
+    private func toggle(_ id: String) {
+        withAnimation(.easeInOut(duration: 0.18)) { selected = selected == id ? nil : id }
+    }
+
     @ViewBuilder
     private var usage: some View {
         let shown = viewModel.signedInWorkspaces
-        if shown.isEmpty, let err = viewModel.errorMessage {
+        let waiting = !viewModel.pendingLogins.isEmpty
+        if shown.isEmpty, !waiting, let err = viewModel.errorMessage {
             VStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 26)).foregroundStyle(.secondary)
@@ -180,23 +203,28 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
 
-        } else if shown.isEmpty {
+        } else if shown.isEmpty, !waiting {
             infoState(icon: "hourglass", text: "Loading your usage…")
 
         } else {
-            ForEach(shown) { ws in
-                // Headed against every account, signed in or not, so a card's
-                // title doesn't change as another account's session comes and
-                // goes.
-                WorkspaceSection(workspace: ws,
-                                 heading: ws.heading(among: viewModel.workspaces),
-                                 swatch: viewModel.account(forProvider: ws.providerID)?.swatch,
-                                 expanded: expanded.contains(ws.id),
-                                 onToggle: {
-                                     withAnimation(.easeInOut(duration: 0.18)) {
-                                         if expanded.remove(ws.id) == nil { expanded.insert(ws.id) }
-                                     }
-                                 })
+            let all = tiles
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: max(1, min(all.count, 2))),
+                      spacing: 10) {
+                ForEach(all) { tile in
+                    RingTile(model: tile, selected: selected == tile.id) { toggle(tile.id) }
+                }
+            }
+            // The open account's card, with pace, resets and history under
+            // every bar. Headed against every account, signed in or not, so
+            // its title doesn't change as another account's session comes and
+            // goes.
+            if let selected {
+                ForEach(shown.filter { $0.providerID == selected }) { ws in
+                    WorkspaceSection(workspace: ws,
+                                     heading: ws.heading(among: viewModel.workspaces),
+                                     swatch: viewModel.account(forProvider: ws.providerID)?.swatch,
+                                     onClose: { toggle(selected) })
+                }
             }
         }
     }
@@ -218,26 +246,111 @@ private struct UsageHeightKey: PreferenceKey {
     }
 }
 
-// MARK: - An account waiting on a sign-in
+// MARK: - Rings
 
-// Its last numbers would be stale, so it shows the way back in instead, beside
-// the accounts that are still signed in.
-struct PendingSignInRow: View {
-    let account: Account
-    let swatch: Color?
+// One account as three concentric rings in its own colour, as the iPhone's
+// Limits view draws them: the session outermost, then the week, then one
+// model's own cap (WorkspaceUsage.rings), so a ring means the same thing on
+// every account and needs no label. The fullest number sits in the middle and
+// the name under the rings. A click opens the account's card below them, with
+// pace, resets and history; an account waiting on a sign-in shows its last
+// rings dimmed, with the way back in.
+struct RingTile: View {
+    struct Model: Identifiable {
+        let id: String              // the provider id
+        let name: String
+        let swatch: Color?
+        let rings: [UsageMetric?]   // the session, the week, a model's cap
+        let signedOut: Account?     // set while the account waits on a sign-in
+    }
+
+    let model: Model
+    let selected: Bool
+    let onSelect: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
-            AccountLabel(text: account.name, swatch: swatch)
-            Spacer(minLength: 8)
-            Text("Signed out")
-                .font(.caption2).foregroundStyle(Color.subtleText)
-            Button("Sign In") {
-                (NSApp.delegate as? AppDelegate)?.showLoginWindow(for: account)
+        let colour = model.swatch ?? .primary
+        VStack(spacing: 6) {
+            ConcentricRings(rings: model.rings, colour: colour)
+                .frame(width: 100, height: 100)
+                .overlay {
+                    if let fullest = model.rings.compactMap({ $0 }).max(by: { $0.percent < $1.percent }) {
+                        Text("\(fullest.percent)%")
+                            .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                            .monospacedDigit()
+                    }
+                }
+                .opacity(model.signedOut == nil ? 1 : 0.35)
+            Text(model.name).font(.caption).fontWeight(.semibold).lineLimit(1)
+            if let account = model.signedOut {
+                Button("Sign In") { (NSApp.delegate as? AppDelegate)?.showLoginWindow(for: account) }
+                    .buttonStyle(.link)
+                    .font(.caption2)
             }
-            .controlSize(.small)
         }
-        .card(swatch)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(selected ? colour.opacity(0.12) : Color.clear))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+        .help(selected ? "Click to close" : "Click for pace, resets and history")
+    }
+}
+
+// Three rings, outermost first, each a faint track with an arc that fills
+// clockwise from the top. An empty slot draws nothing, so the others keep
+// their places, and each ring inward is a little fainter so the three stay
+// apart in one colour. A limit getting close glows softly and one over pace
+// glows strongly, so the ring keeps the account's colour while saying how
+// close it is.
+struct ConcentricRings: View {
+    let rings: [UsageMetric?]
+    let colour: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = false
+
+    private let width: CGFloat = 8
+    private let gap: CGFloat = 3
+
+    var body: some View {
+        ZStack {
+            ForEach(Array(rings.enumerated()), id: \.offset) { index, metric in
+                if let metric { ring(metric, at: CGFloat(index)) }
+            }
+        }
+        .onAppear {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.9)) { shown = true }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(rings.compactMap { $0 }.map { "\($0.label) \($0.percent) percent" }.joined(separator: ", "))
+    }
+
+    private func ring(_ metric: UsageMetric, at index: CGFloat) -> some View {
+        let inset = index * (width + gap) + width / 2
+        let fill = shown ? CGFloat(min(max(metric.percent, 0), 100)) / 100 : 0
+        let glow: Double = switch severity(percent: metric.percent, forecast: metric.forecast) {
+        case .ok: 0
+        case .warn: 0.45
+        case .danger: 0.9
+        }
+        return ZStack {
+            Circle().inset(by: inset).stroke(colour.opacity(0.16), lineWidth: width)
+            if glow > 0, fill > 0 {
+                // Kept tight, so an inner ring's glow doesn't cloud the
+                // number in the middle.
+                Circle().inset(by: inset).trim(from: 0, to: fill)
+                    .stroke(colour, style: StrokeStyle(lineWidth: width + 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .blur(radius: 4)
+                    .opacity(glow)
+            }
+            Circle().inset(by: inset).trim(from: 0, to: fill)
+                .stroke(colour.opacity(1 - 0.19 * Double(index)),
+                        style: StrokeStyle(lineWidth: width, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.6), value: metric.percent)
     }
 }
 
@@ -286,55 +399,38 @@ struct AccountLabel: View {
 
 // MARK: - One workspace's card
 
-// Compact by default: one line per limit and one line of reset times.
-// Clicking the card opens it to the detailed rows — pace, reset and history
-// under every bar — and clicking again closes it.
+// What the rings leave out, for the account clicked: pace, reset and history
+// under every bar. Clicking the card, or its rings again, closes it.
 struct WorkspaceSection: View {
     let workspace: WorkspaceUsage
     // From WorkspaceUsage.heading(among:); nil when there's nothing to tell
     // apart, and the card then carries the account's own name.
     let heading: String?
     let swatch: Color?
-    let expanded: Bool
-    let onToggle: () -> Void
-    @ObservedObject private var prefs = Preferences.shared
+    let onClose: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: expanded ? 12 : 7) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 AccountLabel(text: heading ?? workspace.providerName, swatch: swatch)
                 Spacer(minLength: 4)
-                Image(systemName: "chevron.down")
+                Image(systemName: "chevron.up")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(expanded ? 180 : 0))
             }
 
-            if expanded {
-                if let session = workspace.session {
-                    UsageRowView(metric: session, resetStyle: .countdown,
-                                 providerID: workspace.providerID)
-                }
-                if let weekly = workspace.weeklyAll {
-                    UsageRowView(metric: weekly, resetStyle: .date,
-                                 providerID: workspace.providerID)
-                }
-                // Per-model weekly caps — Fable and friends appear here automatically.
-                ForEach(workspace.weeklyModels) { model in
-                    UsageRowView(metric: model, resetStyle: .date,
-                                 providerID: workspace.providerID)
-                }
-            } else {
-                ForEach(workspace.allMetrics) { metric in
-                    CompactUsageRow(metric: metric)
-                }
-                if let resets = resetsLine {
-                    Text(resets)
-                        .font(.caption2)
-                        .foregroundStyle(Color.subtleText)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                }
+            if let session = workspace.session {
+                UsageRowView(metric: session, resetStyle: .countdown,
+                             providerID: workspace.providerID)
+            }
+            if let weekly = workspace.weeklyAll {
+                UsageRowView(metric: weekly, resetStyle: .date,
+                             providerID: workspace.providerID)
+            }
+            // Per-model weekly caps — Fable and friends appear here automatically.
+            ForEach(workspace.weeklyModels) { model in
+                UsageRowView(metric: model, resetStyle: .date,
+                             providerID: workspace.providerID)
             }
 
             if workspace.extraEnabled {
@@ -352,69 +448,8 @@ struct WorkspaceSection: View {
         }
         .card(swatch)
         .contentShape(Rectangle())
-        .onTapGesture(perform: onToggle)
-        .help(expanded ? "Click for less" : "Click for pace, resets and history")
-    }
-
-    // When the session and the week reset, on one line rather than under every
-    // bar: "Resets 9:29 PM · week Oct 31, 4:00 AM".
-    private var resetsLine: String? {
-        let week = (workspace.weeklyAll ?? workspace.weeklyModels.first)?.resetAt
-        guard let session = workspace.session?.resetAt else {
-            return week.map { "Week resets \(DateUtils.resetDate($0))" }
-        }
-        let first = prefs.showEndTimes ? "Resets \(DateUtils.clockTime(session))"
-                                       : "Resets in \(DateUtils.mediumCountdown(to: session))"
-        return week.map { "\(first) · week \(DateUtils.resetDate($0))" } ?? first
-    }
-}
-
-// MARK: - One limit on one line
-
-// Name, bar, percent. A pace line follows only when the limit is on course to
-// run out; everything else the detailed row says is a click away, and its
-// reset is in the tooltip.
-struct CompactUsageRow: View {
-    let metric: UsageMetric
-    @ObservedObject private var prefs = Preferences.shared
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Text(metric.cardLabel)
-                    .font(.caption)
-                    .foregroundStyle(Color.subtleText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .frame(width: 50, alignment: .leading)
-                UsageBar(percent: metric.percent, color: metric.severityColor, height: 5)
-                Text("\(metric.percent)%")
-                    .font(.caption).fontWeight(.semibold)
-                    .monospacedDigit()
-                    .foregroundStyle(metric.severityColor)
-                    .frame(width: 34, alignment: .trailing)
-            }
-            if let warning {
-                Text(warning)
-                    .font(.caption2)
-                    .foregroundStyle(metric.severityColor)
-                    .padding(.leading, 58)
-            }
-        }
-        .help(metric.resetAt.map { "\(metric.label) · resets \(DateUtils.resetDate($0))" } ?? metric.label)
-    }
-
-    private var warning: String? {
-        switch metric.forecast {
-        case .atLimit:
-            return "At limit"
-        case .willHit(_, let runsOut):
-            return prefs.showEndTimes
-                ? "Runs out around \(DateUtils.clockTime(Date().addingTimeInterval(runsOut)))"
-                : "About \(DateUtils.duration(runsOut)) left at this pace"
-        case .unknown, .warmingUp, .safe:
-            return nil
-        }
+        .onTapGesture(perform: onClose)
+        .help("Click to close")
     }
 }
 

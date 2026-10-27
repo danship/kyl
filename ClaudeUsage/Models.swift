@@ -155,6 +155,18 @@ struct WorkspaceUsage: Equatable, Identifiable {
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
+
+    // An account's three rings, outermost first: the session, the week, and
+    // one model's own cap, each the fullest its workspaces report. A slot is
+    // nil when the account has no such limit, so each ring keeps its place
+    // and means the same thing on every account. Codex's windows already sit
+    // in the session and week fields.
+    static func rings(of workspaces: [WorkspaceUsage]) -> [UsageMetric?] {
+        func fullest(_ metrics: [UsageMetric]) -> UsageMetric? { metrics.max { $0.percent < $1.percent } }
+        return [fullest(workspaces.compactMap(\.session)),
+                fullest(workspaces.compactMap(\.weeklyAll)),
+                fullest(workspaces.flatMap(\.weeklyModels))]
+    }
 }
 
 // MARK: - Forecast result
