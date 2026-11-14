@@ -74,9 +74,69 @@ enum UsageParser {
             }
         }
 
+        result.bankedResets = bankedResets(usageDict["cedar_ember"])
+
         // Show the per-model bars in a stable order (highest usage first).
         result.weeklyModels.sort { $0.percent > $1.percent }
         return result
+    }
+
+    // Banked resets, from the `cedar_ember` object claude.ai includes when
+    // asked with `?cedar_ember=1`:
+    //
+    //   {"eligible": true, "grants": [{"label": "Free limit reset", "type": "weekly",
+    //     "clears": ["seven_day", "seven_day_overage_included"], "gives_back_weekly": false,
+    //     "resets_left": 1, "ends_at": "2026-12-16T04:59:00+00:00", "paused": false,
+    //     "usable_now": true, …}, …], …}
+    //
+    // Only resets that can be used now: a grant with none left, a paused one,
+    // one with an impossible count and one claude.ai says is not usable yet
+    // are left out. Soonest to expire first.
+    static func bankedResets(_ value: Any?) -> [BankedReset] {
+        guard let status = value as? [String: Any], status["eligible"] as? Bool == true,
+              let grants = status["grants"] as? [[String: Any]] else { return [] }
+        let resets = grants.compactMap { grant -> BankedReset? in
+            guard let left = doubleValue(grant["resets_left"]).map({ Int($0) }),
+                  // A count this large cannot be real, and adding such
+                  // counts up could overflow.
+                  left > 0, left <= 1000,
+                  grant["paused"] as? Bool != true,
+                  grant["usable_now"] as? Bool != false else { return nil }
+            let kind = bankedKind(grant)
+            let label = (grant["label"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "\(kindName(kind)) reset"
+            return BankedReset(label: label, kind: kind, left: left,
+                               endsAt: DateUtils.parseISO(grant["ends_at"] as? String))
+        }
+        return resets.sorted { ($0.endsAt ?? .distantFuture) < ($1.endsAt ?? .distantFuture) }
+    }
+
+    // What a grant gives back, as Claude Code works it out: a grant that gives
+    // back the week's Fable use is a Fable reset whatever its type says; then
+    // the type; then what it clears.
+    static func bankedKind(_ grant: [String: Any]) -> BankedReset.Kind {
+        if grant["gives_back_weekly"] as? Bool == true { return .fable }
+        if let type = grant["type"] as? String, !type.isEmpty {
+            switch type {
+            case "session": return .session
+            case "weekly":  return .weekly
+            case "full":    return .full
+            default:        return .other(type)
+            }
+        }
+        let clears = grant["clears"] as? [String] ?? []
+        let session = clears.contains("five_hour")
+        let other = clears.contains { $0 != "five_hour" }
+        return session && !other ? .session : other && !session ? .weekly : .full
+    }
+
+    static func kindName(_ kind: BankedReset.Kind) -> String {
+        switch kind {
+        case .session:         return "Session"
+        case .weekly:          return "Weekly"
+        case .full:            return "Full"
+        case .fable:           return "Fable"
+        case .other(let type): return type.capitalized
+        }
     }
 
     // Pulls a friendly model name out of a weekly_scoped limit's `scope` object,

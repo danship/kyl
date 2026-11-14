@@ -12,7 +12,7 @@ per-model limits, extra usage, history, forecasts, service status, Codex and
 local models. quotabar is better at a few narrow things. This document lists
 those things and proposes how KYL could adopt each one, most valuable first.
 
-Items 1 to 4 and 7 are built. Items 5, 6 and 8 are not started.
+Items 1 to 5 and 7 are built. Items 6 and 8 are not started.
 
 ## 1. One glyph per account in the menu bar
 
@@ -105,23 +105,45 @@ the usage answer, counts the ones that clear the weekly limit, and shows the
 count as a digit in the middle of the circle. The menu lists each kind with
 how many are left and when they expire. It never uses them.
 
-**What KYL does.** Nothing. KYL's parser does not read `cedar_ember`.
+**What KYL did.** Nothing. KYL's parser did not read `cedar_ember`.
 
-**Caveat.** quotabar reads `api.anthropic.com/api/oauth/usage` with
-`?cedar_ember=1`, and its README says the server reports banked resets only
-to surfaces it offers them on, telling surfaces apart by request headers.
-KYL reads `claude.ai/api/organizations/{id}/usage` with the site's own
-cookies. Whether that answer carries banked resets is not known (a guess
-either way).
+**What a probe found.** quotabar reads `api.anthropic.com/api/oauth/usage`
+with `?cedar_ember=1`, and its README says the server reports banked resets
+only to surfaces it offers them on. KYL reads
+`claude.ai/api/organizations/{id}/usage` with the site's own cookies. A probe
+build asked that endpoint both ways once per launch. With four accounts
+signed in:
 
-**Proposal.** First, log the raw usage answer for each signed-in account
-once, and look for `cedar_ember` or anything like it. If the answer has it,
-parse it as quotabar does (its `parseBanked` function sorts resets into
-session, weekly, Fable-only and full resets the way Claude Code does) and
-show the count of resets that clear the weekly limit as a small badge on the
-account's ring, with the list and expiry dates in the account's detail view
-and in `usage.json`. If the answer does not have it, stop there: see "Not
-proposed" below.
+- Without the flag, every answer has `"cedar_ember": null`.
+- With `?cedar_ember=1`, every answer that had usage carries the full
+  `cedar_ember` object, with `"surface": "claude_ai"` and
+  `"eligible": true`. No Claude Code headers are needed; the site's cookies
+  are enough.
+- One workspace answered 403 both ways, as it does for usage.
+
+The object matches quotabar's reading and adds fields: `id`, `starts_at`,
+`resets_total`, `usable_now`, `unavailable_reason`, `percent_used`,
+`blocking`, and `weekly_resets_at` at the top. The grants seen were of
+three kinds:
+
+- `"type": "weekly"` grants clearing `seven_day` and
+  `seven_day_overage_included` ("One full limit reset (November 2026)",
+  "Free limit reset").
+- `"type": "full"` grants with `"gives_back_weekly": true` clearing only
+  `seven_day_overage_included` ("New model launch: one Fable reset…").
+  Claude Code's rule, as quotabar copies it, calls these Fable resets
+  because `gives_back_weekly` is checked before `type`.
+
+**Built.** KYL requests `/usage?cedar_ember=1` on every check and reads
+`cedar_ember` as quotabar does, sorting resets into session, weekly, Fable
+and full resets the way Claude Code does, and leaving out grants that are
+paused, used up or not `usable_now`. A digit in the middle of each
+account's menu bar rings counts the resets that clear the weekly limit (a
+setting turns it off); the one glyph for several accounts shows none,
+since a reset clears only its own account. The popover puts the same count
+on each account's ring tile and lists every reset, with what it clears and
+when it expires, in the account's card; `usage.json` carries them as
+`bankedResets`. KYL never uses a reset.
 
 ## 6. Error messages that name the field that changed
 
@@ -175,7 +197,8 @@ can be reused as it stands.
   browser with OAuth, as Claude Code's registered client, asking only for
   the scope that reads a profile. It keeps tokens of its own and sends
   Claude Code's `User-Agent` and `x-app` headers. That removes KYL's hidden
-  web view and is the only known way to get banked resets. It also presents
+  web view. Banked resets do not need it: claude.ai reports them to the
+  site's own cookies (item 5). It also presents
   the app to Anthropic as Claude Code, which quotabar's own README says
   Anthropic's terms may not allow. KYL already depends on one undocumented
   endpoint; adding an impersonated client makes the risk larger, not

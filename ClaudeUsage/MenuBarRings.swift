@@ -49,6 +49,9 @@ struct MenuBarGlyph: Equatable {
     var tint: String? = nil
     /// The account is waiting on a sign-in, so its numbers are old.
     var dimmed = false
+    /// How many banked resets that clear the weekly limit the account has,
+    /// shown as a digit in the middle; 0 shows nothing.
+    var banked = 0
 }
 
 enum MenuBarRings {
@@ -64,20 +67,29 @@ enum MenuBarRings {
     /// fullest. Each glyph has a ring for each of `keys` the accounts report,
     /// at most three, in the popover's order, so the outer ring always means
     /// the same limit. `tints` and `signedOut` are keyed by provider id.
+    ///
+    /// With `banked`, a glyph carries its account's banked weekly resets. A
+    /// reset clears only its own account's limit, so the one glyph for every
+    /// account carries them only when the workspaces are all one account's.
     static func make(workspaces: [WorkspaceUsage], keys: [String], perAccount: Bool,
                      tints: [String: String] = [:], signedOut: Set<String> = [],
-                     now: Date) -> [MenuBarGlyph] {
+                     banked: Bool = true, now: Date) -> [MenuBarGlyph] {
         let wanted = Set(keys)
         let shown = choices(workspaces).map(\.key).filter { wanted.contains($0) }.prefix(3)
-        guard perAccount else {
-            return [MenuBarGlyph(rings: shown.map { ring(for: $0, in: workspaces, now: now) })]
-        }
         var order: [String] = []
         for ws in workspaces where !order.contains(ws.providerID) { order.append(ws.providerID) }
+        func resets(_ own: [WorkspaceUsage]) -> Int {
+            banked ? own.reduce(0) { $0 + $1.weeklyResetsLeft(at: now) } : 0
+        }
+        guard perAccount else {
+            return [MenuBarGlyph(rings: shown.map { ring(for: $0, in: workspaces, now: now) },
+                                 banked: order.count == 1 ? resets(workspaces) : 0)]
+        }
         return order.map { provider in
             let own = workspaces.filter { $0.providerID == provider }
             return MenuBarGlyph(rings: shown.map { ring(for: $0, in: own, now: now) },
-                                tint: tints[provider], dimmed: signedOut.contains(provider))
+                                tint: tints[provider], dimmed: signedOut.contains(provider),
+                                banked: resets(own))
         }
     }
 

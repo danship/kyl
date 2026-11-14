@@ -29,6 +29,12 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(menuBarRingsPerAccount, forKey: "menuBarRingsPerAccount") }
     }
 
+    // A digit in the middle of each account's rings: how many banked resets
+    // it has that clear the weekly limit.
+    @Published var menuBarBankedResets: Bool {
+        didSet { defaults.set(menuBarBankedResets, forKey: "menuBarBankedResets") }
+    }
+
     // How much name each of those percentages carries — full, one letter, or none.
     @Published var menuBarLabelStyle: MenuBarLabelStyle {
         didSet { defaults.set(menuBarLabelStyle.rawValue, forKey: "menuBarLabelStyle") }
@@ -57,6 +63,7 @@ final class Preferences: ObservableObject {
             "menuBarMetrics": ["session"],
             "menuBarRings": ["session", "weekly_all"],   // exactly today's icon
             "menuBarRingsPerAccount": true,
+            "menuBarBankedResets": true,
             "menuBarLabelStyle": MenuBarLabelStyle.full.rawValue,
             "showEndTimes": true,
             "showCodex": true,
@@ -67,6 +74,7 @@ final class Preferences: ObservableObject {
         // didSet does not fire during init, so these don't re-write the defaults.
         menuBarRings    = defaults.stringArray(forKey: "menuBarRings") ?? ["session", "weekly_all"]
         menuBarRingsPerAccount = defaults.bool(forKey: "menuBarRingsPerAccount")
+        menuBarBankedResets = defaults.bool(forKey: "menuBarBankedResets")
         refreshMinutes  = defaults.integer(forKey: "refreshMinutes")
         notifyAt80      = defaults.bool(forKey: "notifyAt80")
         notifyAt100     = defaults.bool(forKey: "notifyAt100")

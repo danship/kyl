@@ -7,6 +7,10 @@ import WebKit
 //     GET /api/organizations               -> your workspaces
 //     GET /api/organizations/{id}/usage    -> usage numbers as clean JSON
 //
+// The usage call adds `?cedar_ember=1`, which asks claude.ai to include the
+// account's banked resets, as it does for Claude Code; without it the answer
+// carries `"cedar_ember": null`.
+//
 // The JavaScript below runs those two calls and hands the result back to Swift
 // through a "message handler" — a little mailbox WebKit gives us for exactly
 // this purpose.
@@ -258,7 +262,7 @@ final class UsageFetcher: NSObject, WKNavigationDelegate, WKScriptMessageHandler
         const workspaces = [];
         for (const org of orgs) {
           try {
-            const usage = await fetch('/api/organizations/' + org.uuid + '/usage',
+            const usage = await fetch('/api/organizations/' + org.uuid + '/usage?cedar_ember=1',
                                       { credentials: 'include' }).then(r => r.json());
             workspaces.push({ uuid: org.uuid, name: org.name, usage: usage });
           } catch (e) {

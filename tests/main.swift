@@ -41,6 +41,7 @@ let suites: [(String, () -> Void)] = [
     ("menu bar rings", menuBarRingsTests),
     ("ring image", ringImageTests),
     ("network gate", networkGateTests),
+    ("banked resets", bankedResetTests),
 ]
 
 for (name, run) in suites {

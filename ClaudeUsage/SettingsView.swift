@@ -73,6 +73,9 @@ struct SettingsView: View {
                      ? "Each account's rings sit side by side, its color on the track."
                      : "One set of rings shows each limit at its fullest across accounts.")
                     .font(.caption2).foregroundStyle(.secondary)
+                Toggle("Count banked resets", isOn: $prefs.menuBarBankedResets)
+                Text("A digit in the rings counts an account's banked resets that clear the weekly limit.")
+                    .font(.caption2).foregroundStyle(.secondary)
 
                 Divider()
 

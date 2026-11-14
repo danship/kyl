@@ -17,6 +17,10 @@ import AppKit
 // passing. A ring whose limit has reset since it was read is drawn faintly,
 // since its number is known to be wrong.
 //
+// A digit in the middle counts the account's banked resets that clear the
+// weekly limit, as quotabar shows them, sized to the space the innermost ring
+// leaves; more than nine reads "+".
+//
 // When claude.ai itself is unwell the rings stay put and a small badge appears in
 // the corner. Replacing the rings with a status dot — which is what this used to
 // do — threw away the number you still needed: degraded service doesn't stop you
@@ -81,7 +85,31 @@ enum ProgressRingImage {
         for (ring, g) in zip(rings, geo.rings) {
             drawRing(ctx, center: center, radius: g.r, lineWidth: g.w, ring: ring, track: track)
         }
+        if glyph.banked > 0 {
+            let innermost = geo.rings[max(rings.count, 1) - 1]
+            drawCount(glyph.banked, in: ctx, center: center, room: 2 * (innermost.r - innermost.w / 2))
+        }
         ctx.endTransparencyLayer()
+    }
+
+    // A count centred in a hole `room` points across, its digit's height
+    // centred rather than its line's. A thin gap is cut around it so it never
+    // runs into the ring around it; a lone ring's large hole still gets a
+    // digit no bigger than the others'.
+    private static func drawCount(_ count: Int, in ctx: CGContext, center: CGPoint, room: CGFloat) {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: min(room * 0.9, 8), weight: .bold)
+        let string = count > 9 ? "+" : "\(count)"
+        let fill = NSAttributedString(string: string, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        // A positive stroke width draws the outline only, in percent of the font size.
+        let halo = NSAttributedString(string: string, attributes: [.font: font, .strokeWidth: 24,
+                                                                   .strokeColor: NSColor.black])
+        let origin = CGPoint(x: center.x - fill.size().width / 2,
+                             y: center.y - font.capHeight / 2 + font.descender)
+        ctx.saveGState()
+        ctx.setBlendMode(.clear)
+        halo.draw(at: origin)
+        ctx.restoreGState()
+        fill.draw(at: origin)
     }
 
     private static func color(for s: Severity) -> NSColor {

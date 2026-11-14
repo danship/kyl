@@ -81,6 +81,11 @@ Requires **macOS 13 (Ventura) or later**; several accounts at once need macOS 14
   the first expensive prompt of a session from setting off a false alarm.
 - **Extra usage** — with pay-as-you-go enabled, shows real spend against your
   cap: "$0.12 of $5.00 · $4.88 left".
+- **Banked resets** — when Anthropic has given an account resets that clear a
+  limit early, a digit in the middle of its menu bar rings counts the ones
+  that clear the weekly limit, and the account's card lists each with what it
+  clears and when it expires. KYL never spends one; that happens on claude.ai.
+  The digit can be turned off in Preferences.
 - **When the window opened** — a session window is a rolling five hours anchored
   to whenever it opened, not a fixed clock, so the popover shows both ends:
   "Opened 12:10 PM · resets 5:10 PM". Start work an hour before one closes and
@@ -134,7 +139,9 @@ Preferences lists them and then Codex. Each account has an `id`, `service`
 its `key`, `label`, `percent`, `resetsAt`, `severity` (`ok`, `warn` or
 `danger`, the bar's color) and `pace` (`unknown`, `calculating`, `onTrack`,
 `willRunOut` or `atLimit`), with `projectedPercent` or `runsOutAt` when the
-pace has one. Dates are ISO 8601. Keys are only ever added, values that don't
+pace has one. A workspace with banked resets has `bankedResets`, each with its
+`label`, `kind` (`session`, `weekly`, `full`, `fable`, or a kind claude.ai has
+added since), `clearsWeekly`, `left` and `endsAt`. Dates are ISO 8601. Keys are only ever added, values that don't
 apply are left out rather than written as `null`, and there is no version
 number to check: read the keys you know.
 
@@ -146,7 +153,8 @@ A hidden `WKWebView` stays parked on `claude.ai` and, every few minutes, calls
 the site's own usage API with your logged-in cookies:
 
 - `GET /api/organizations` → your workspaces
-- `GET /api/organizations/{id}/usage` → usage JSON per workspace
+- `GET /api/organizations/{id}/usage?cedar_ember=1` → usage JSON per
+  workspace; the flag asks for the account's banked resets, as Claude Code does
 
 There's **no HTML scraping and no browser automation** — it reads the same
 structured data the settings page uses.

@@ -172,8 +172,10 @@ struct PopoverView: View {
         let pending = Set(viewModel.pendingLogins.map(\.id))
         let claude = AccountStore.shared.accounts.map { account -> RingTile.Model in
             let id = ClaudeProvider.id(for: account)
+            let own = viewModel.workspaces.filter { $0.providerID == id }
             return RingTile.Model(id: id, name: account.name, swatch: account.swatch,
-                                  rings: WorkspaceUsage.rings(of: viewModel.workspaces.filter { $0.providerID == id }),
+                                  rings: WorkspaceUsage.rings(of: own),
+                                  banked: own.reduce(0) { $0 + $1.weeklyResetsLeft(at: Date()) },
                                   signedOut: pending.contains(account.id) ? account : nil)
         }
         let claudeIDs = Set(claude.map(\.id))
@@ -183,7 +185,7 @@ struct PopoverView: View {
             .map { ws in
                 RingTile.Model(id: ws.providerID, name: ws.providerName, swatch: nil,
                                rings: WorkspaceUsage.rings(of: viewModel.workspaces.filter { $0.providerID == ws.providerID }),
-                               signedOut: nil)
+                               banked: 0, signedOut: nil)
             }
         return claude + others
     }
@@ -256,7 +258,8 @@ private struct UsageHeightKey: PreferenceKey {
 // Limits view draws them: the session outermost, then the week, then one
 // model's own cap (WorkspaceUsage.rings), so a ring means the same thing on
 // every account and needs no label. The fullest number sits in the middle and
-// the name under the rings. A click opens the account's card below them, with
+// the name under the rings, and a badge on the rings counts the banked resets
+// that clear the weekly limit. A click opens the account's card below them, with
 // pace, resets and history; an account waiting on a sign-in shows its last
 // rings dimmed, with the way back in.
 struct RingTile: View {
@@ -265,6 +268,7 @@ struct RingTile: View {
         let name: String
         let swatch: Color?
         let rings: [UsageMetric?]   // the session, the week, a model's cap
+        let banked: Int             // banked resets that clear the weekly limit
         let signedOut: Account?     // set while the account waits on a sign-in
     }
 
@@ -294,6 +298,9 @@ struct RingTile: View {
                             .monospacedDigit()
                     }
                 }
+                .overlay(alignment: .topTrailing) {
+                    if model.banked > 0 { bankedBadge(colour: colour) }
+                }
                 .opacity(model.signedOut == nil ? 1 : 0.35)
             Text(model.name).font(.caption).fontWeight(.semibold).lineLimit(1)
             if let account = model.signedOut {
@@ -309,6 +316,19 @@ struct RingTile: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .help(selected ? "Click to close" : "Click for pace, resets and history")
+    }
+
+    private func bankedBadge(colour: Color) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: "arrow.counterclockwise").font(.system(size: 8, weight: .bold))
+            Text("\(model.banked)").font(.caption2.weight(.semibold)).monospacedDigit()
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(colour.opacity(0.25)))
+        .offset(x: 6, y: -2)
+        .help(model.banked == 1 ? "1 banked reset clears the weekly limit"
+                                : "\(model.banked) banked resets clear the weekly limit")
     }
 }
 
@@ -471,6 +491,11 @@ struct WorkspaceSection: View {
             ForEach(workspace.weeklyModels) { model in
                 UsageRowView(metric: model, resetStyle: .date,
                              providerID: workspace.providerID)
+            }
+
+            let banked = workspace.bankedResets.filter { $0.isUsable(at: Date()) }
+            if !banked.isEmpty {
+                BankedResetsView(resets: banked)
             }
 
             if workspace.extraEnabled {
@@ -807,6 +832,53 @@ struct ExtraUsageRow: View {
         f.minimumFractionDigits = 2
         f.maximumFractionDigits = 2
         return f.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+}
+
+// MARK: - Banked resets
+
+// The resets the account has banked, soonest to expire first, each with what
+// it clears and when it expires. Only listed: a reset is spent on claude.ai.
+struct BankedResetsView: View {
+    let resets: [BankedReset]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Banked resets").font(.caption).foregroundStyle(Color.subtleText)
+            ForEach(Array(resets.enumerated()), id: \.offset) { _, reset in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(reset.label).font(.caption)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(detail(reset)).font(.caption2).foregroundStyle(Color.subtleText)
+                }
+            }
+        }
+    }
+
+    // "2 left · Clears the week · until Dec 10"
+    private func detail(_ reset: BankedReset) -> String {
+        var parts: [String] = []
+        if reset.left > 1 { parts.append("\(reset.left) left") }
+        parts.append(Self.clears(reset.kind))
+        if let ends = reset.endsAt { parts.append("until \(Self.day(ends))") }
+        return parts.joined(separator: " · ")
+    }
+
+    static func clears(_ kind: BankedReset.Kind) -> String {
+        switch kind {
+        case .session:         return "Clears the session"
+        case .weekly:          return "Clears the week"
+        case .full:            return "Clears the session and the week"
+        case .fable:           return "Gives back Fable's use of the week"
+        case .other(let type): return "\(type.capitalized) reset"
+        }
+    }
+
+    // "Dec 10", or "Mar 9, 2027" outside this year.
+    static func day(_ date: Date) -> String {
+        let sameYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+        return date.formatted(sameYear ? .dateTime.month(.abbreviated).day()
+                                       : .dateTime.month(.abbreviated).day().year())
     }
 }
 

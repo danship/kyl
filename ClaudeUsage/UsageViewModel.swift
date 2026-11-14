@@ -414,6 +414,7 @@ class UsageViewModel: ObservableObject {
                                  perAccount: Preferences.shared.menuBarRingsPerAccount,
                                  tints: tints,
                                  signedOut: Set(pendingLogins.map(ClaudeProvider.id(for:))),
+                                 banked: Preferences.shared.menuBarBankedResets,
                                  now: now)
     }
 

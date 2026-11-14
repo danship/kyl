@@ -140,6 +140,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateStatusBar() }
             .store(in: &cancellables)
+        Preferences.shared.$menuBarBankedResets
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusBar() }
+            .store(in: &cancellables)
         // A sign-in starting or finishing dims or restores that account's glyph.
         viewModel.$pendingLogins
             .receive(on: RunLoop.main)

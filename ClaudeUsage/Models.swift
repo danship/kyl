@@ -97,6 +97,31 @@ enum MenuBarLabelStyle: String, CaseIterable, Identifiable {
     }
 }
 
+// A banked reset: a credit some accounts are given that clears a limit early,
+// such as "One full limit reset (November 2026)". KYL lists them and never
+// uses one; claude.ai's own settings page is where a reset is spent.
+struct BankedReset: Equatable {
+    // What the reset gives back, worked out as Claude Code does.
+    enum Kind: Equatable {
+        case session            // the five-hour limit
+        case weekly             // the weekly limit
+        case full               // both
+        case fable              // what Fable used of the week, and nothing else
+        case other(String)      // a kind claude.ai has added since
+    }
+
+    let label: String
+    let kind: Kind
+    let left: Int
+    let endsAt: Date?
+
+    // Whether this reset can clear the weekly limit, the one a banked reset
+    // matters most for: a week runs out for days, a session for hours.
+    var clearsWeekly: Bool { kind == .weekly || kind == .full }
+
+    func isUsable(at now: Date) -> Bool { endsAt.map { $0 > now } ?? true }
+}
+
 // A snapshot of one workspace's whole usage picture.
 struct WorkspaceUsage: Equatable, Identifiable {
     var providerID: String             // which service this came from, e.g. "claude"
@@ -112,6 +137,7 @@ struct WorkspaceUsage: Equatable, Identifiable {
     var extraCurrency: String?         // e.g. "USD"
     var lastUpdated: Date?
     var error: String?
+    var bankedResets: [BankedReset]    // soonest to expire first
 
     // Prefixed with the provider: two services could easily both call something
     // "default", and this id drives both list identity and the forecaster's
@@ -132,6 +158,12 @@ struct WorkspaceUsage: Equatable, Identifiable {
         extraCurrency = nil
         lastUpdated = nil
         error = nil
+        bankedResets = []
+    }
+
+    // How many banked resets that clear the weekly limit can still be used.
+    func weeklyResetsLeft(at now: Date) -> Int {
+        bankedResets.filter { $0.clearsWeekly && $0.isUsable(at: now) }.reduce(0) { $0 + $1.left }
     }
 
     // Every limit in one flat list, in display order — handy for forecasting

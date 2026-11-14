@@ -35,6 +35,15 @@ enum UsageExport {
         let error: String?
         let limits: [Limit]
         let extraUsage: ExtraUsage?
+        let bankedResets: [BankedResetEntry]?  // left out when there are none
+    }
+
+    struct BankedResetEntry: Codable, Equatable {
+        let label: String
+        let kind: String            // "session", "weekly", "full", "fable", or a kind claude.ai added
+        let clearsWeekly: Bool
+        let left: Int
+        let endsAt: Date?
     }
 
     struct Limit: Codable, Equatable {
@@ -113,7 +122,24 @@ enum UsageExport {
                        extraUsage: ws.extraEnabled
                            ? ExtraUsage(used: ws.extraUsedCredits, limit: ws.extraMonthlyLimit,
                                         currency: ws.extraCurrency)
-                           : nil)
+                           : nil,
+                       bankedResets: bankedResets(ws.bankedResets, now: now))
+    }
+
+    private static func bankedResets(_ resets: [BankedReset], now: Date) -> [BankedResetEntry]? {
+        let usable = resets.filter { $0.isUsable(at: now) }
+        guard !usable.isEmpty else { return nil }
+        return usable.map { reset in
+            let kind = switch reset.kind {
+            case .session: "session"
+            case .weekly: "weekly"
+            case .full: "full"
+            case .fable: "fable"
+            case .other(let type): type
+            }
+            return BankedResetEntry(label: reset.label, kind: kind, clearsWeekly: reset.clearsWeekly,
+                                    left: reset.left, endsAt: reset.endsAt)
+        }
     }
 
     private static func limit(_ m: UsageMetric, now: Date) -> Limit {
