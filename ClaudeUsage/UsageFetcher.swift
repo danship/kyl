@@ -17,6 +17,7 @@ final class UsageFetcher: NSObject, WKNavigationDelegate, WKScriptMessageHandler
     var onWorkspacesReceived: (([WorkspaceUsage]) -> Void)?
     var onNeedsLogin: (() -> Void)?
     var onError: ((String) -> Void)?
+    var onNetworkFailure: (() -> Void)?
 
     // Drop cached responses, keeping everything that holds the session. This
     // fetcher's own store: each account after the first has its own, and the
@@ -181,6 +182,8 @@ final class UsageFetcher: NSObject, WKNavigationDelegate, WKScriptMessageHandler
             dlog("payload error: \(error)")
             if error == "not_logged_in" {
                 onNeedsLogin?()
+            } else if error == "network" {
+                onNetworkFailure?()
             } else {
                 onError?(error)
             }
@@ -235,9 +238,18 @@ final class UsageFetcher: NSObject, WKNavigationDelegate, WKScriptMessageHandler
     private static let fetchJS = """
     (async function() {
       function post(p) { try { window.webkit.messageHandlers.usage.postMessage(p); } catch (e) {} }
+      // fetch() rejects with a TypeError only when no answer came back at
+      // all: no network, a lost connection, a host that cannot be found. An
+      // answer of any status resolves instead.
+      let orgsResponse;
       try {
-        const orgs = await fetch('/api/organizations', { credentials: 'include' })
-                             .then(r => r.json());
+        orgsResponse = await fetch('/api/organizations', { credentials: 'include' });
+      } catch (e) {
+        post({ error: e instanceof TypeError ? 'network' : 'API call failed: ' + ((e && e.message) || String(e)) });
+        return;
+      }
+      try {
+        const orgs = await orgsResponse.json();
         if (!Array.isArray(orgs) || orgs.length === 0) {
           post({ error: 'not_logged_in' });
           return;

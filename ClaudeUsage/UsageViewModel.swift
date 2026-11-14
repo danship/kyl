@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import AppKit
+import Network
 
 class UsageViewModel: ObservableObject {
     // One entry per workspace the login belongs to (personal, work, …).
@@ -12,6 +13,9 @@ class UsageViewModel: ObservableObject {
     @Published var pendingLogins: [Account] = []
     @Published var errorMessage: String? = nil
     @Published var claudeStatus: ClaudeStatus = .operational
+    // A check is owed but the Mac has no network, as it often has for a
+    // moment after waking. It runs once macOS says the network is back.
+    @Published private(set) var isWaitingForNetwork = false
 
     // Local models (Ollama / LM Studio) working right now — separate from the
     // claude.ai numbers above, since these have no quota, just a busy/idle state.
@@ -35,6 +39,12 @@ class UsageViewModel: ObservableObject {
     private let forecaster = UsageForecaster()
     private var refreshTimer: Timer?
     private var fetchWatchdog: Timer?
+    // Fires at the next reset of any limit, when the numbers go out of date.
+    private var resetTimer: Timer?
+    // macOS says when the network comes and goes; the gate decides when a
+    // check may run.
+    private let pathMonitor = NWPathMonitor()
+    private var gate = NetworkGate()
     private var wakeObserver: Any?
     private var activityToken: NSObjectProtocol?
     private var cancellables = Set<AnyCancellable>()
@@ -119,8 +129,15 @@ class UsageViewModel: ObservableObject {
             .sink { [weak self] _ in self?.scheduleRefreshTimer() }
             .store(in: &cancellables)
 
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let satisfied = path.status == .satisfied
+            Task { @MainActor in self?.networkChanged(online: satisfied) }
+        }
+        pathMonitor.start(queue: .main)
+
         // After the Mac wakes from sleep, refresh right away — that's when the
-        // parked page most often needs recovering.
+        // parked page most often needs recovering. With no network yet, the
+        // check waits for it.
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.refresh()
@@ -182,6 +199,9 @@ class UsageViewModel: ObservableObject {
                     self?.errorMessage = message   // keep last good numbers on screen
                     self?.isLoading = false
                 }
+            }
+            provider.onNetworkFailure = { [weak self] in
+                DispatchQueue.main.async { self?.networkFailed() }
             }
             provider.start()
             providers.append(provider)
@@ -268,6 +288,15 @@ class UsageViewModel: ObservableObject {
     }
 
     func refresh() {
+        guard gate.checkRequested() else {
+            isWaitingForNetwork = true
+            return
+        }
+        check()
+    }
+
+    private func check() {
+        isWaitingForNetwork = false
         isLoading = true
         providers.forEach { $0.fetch() }
 
@@ -283,6 +312,36 @@ class UsageViewModel: ObservableObject {
         }
         RunLoop.main.add(watchdog, forMode: .common)
         fetchWatchdog = watchdog
+    }
+
+    private func networkChanged(online: Bool) {
+        if gate.networkChanged(online: online) { check() }
+    }
+
+    // A check failed for want of a network. The last good numbers stay.
+    private func networkFailed() {
+        isLoading = false
+        if gate.checkFailedForNetwork() {
+            check()
+        } else {
+            isWaitingForNetwork = true
+        }
+    }
+
+    // A check at the next reset, since that is when the numbers on screen
+    // stop being true. Until it answers, a limit past its reset shows as
+    // waiting rather than with its old number.
+    private func scheduleResetCheck() {
+        resetTimer?.invalidate()
+        resetTimer = nil
+        guard let next = WorkspaceUsage.nextReset(of: workspaces, after: Date()) else { return }
+        let timer = Timer(fire: next, interval: 0, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.objectWillChange.send()
+            self.refresh()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        resetTimer = timer
     }
 
     // Kept for the single-account path; multi-account uses signedIn(_:).
@@ -316,6 +375,7 @@ class UsageViewModel: ObservableObject {
         NotificationManager.shared.evaluate(workspaces)
         isLoading = false
         errorMessage = nil
+        scheduleResetCheck()
     }
 
     private func forecasted(_ metric: UsageMetric?, scope: String) -> UsageMetric? {
@@ -340,31 +400,21 @@ class UsageViewModel: ObservableObject {
     // Every limit currently reported, de-duplicated across workspaces and in the
     // order the popover draws them: the menu of what the menu bar can be told to
     // show. Per-model caps appear here as soon as the account has one.
-    var menuBarChoices: [UsageMetric] {
-        var seen = Set<String>()
-        return workspaces.flatMap(\.allMetrics).filter { seen.insert($0.key).inserted }
-    }
+    var menuBarChoices: [UsageMetric] { MenuBarRings.choices(workspaces) }
 
-    // The rings to draw, outermost first.
-    //
-    // Ordered by menuBarChoices (the popover's order) rather than by however the
-    // preference happens to be stored, so the outer ring keeps meaning what it
-    // always has and ticking a per-model cap adds a ring inside rather than
-    // shuffling the others. Worst severity across workspaces, matching the
-    // numbers the popover shows.
-    var menuBarRings: [ProgressRingImage.Ring] {
-        let wanted = Set(Preferences.shared.menuBarRings)
-        return menuBarChoices
-            .filter { wanted.contains($0.key) }
-            .prefix(3)
-            .map { choice in
-                let matching = workspaces.flatMap(\.allMetrics).filter { $0.key == choice.key }
-                let percent = matching.compactMap(\.percent).max()
-                let worst = matching
-                    .map { severity(percent: $0.percent, forecast: $0.forecast) }
-                    .max() ?? .ok
-                return ProgressRingImage.Ring(percent: percent, severity: worst)
-            }
+    // The glyphs to draw: one per account, each in its color, unless the
+    // preference asks for one showing every account's fullest. A signed-out
+    // account's glyph keeps its last numbers, dimmed.
+    func menuBarGlyphs(now: Date = Date()) -> [MenuBarGlyph] {
+        var tints: [String: String] = [:]
+        for account in AccountStore.shared.accounts {
+            tints[ClaudeProvider.id(for: account)] = account.color
+        }
+        return MenuBarRings.make(workspaces: workspaces, keys: Preferences.shared.menuBarRings,
+                                 perAccount: Preferences.shared.menuBarRingsPerAccount,
+                                 tints: tints,
+                                 signedOut: Set(pendingLogins.map(ClaudeProvider.id(for:))),
+                                 now: now)
     }
 
     // True if any limit anywhere is on pace to hit its cap — drives the ⚠ text.
@@ -405,6 +455,8 @@ class UsageViewModel: ObservableObject {
     deinit {
         refreshTimer?.invalidate()
         fetchWatchdog?.invalidate()
+        resetTimer?.invalidate()
+        pathMonitor.cancel()
         localMonitor.stop()
         if let wakeObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)

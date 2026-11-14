@@ -22,6 +22,12 @@ final class Preferences: ObservableObject {
     // outer ring keeps meaning what it has always meant. Capped at three: a
     // fourth has too little circumference left to read as an arc.
     @Published var menuBarRings: [String] { didSet { defaults.set(menuBarRings, forKey: "menuBarRings") } }
+    // With several accounts, a glyph of rings for each, side by side, rather
+    // than one glyph showing each limit at its fullest across them all, which
+    // hides the account that still has room.
+    @Published var menuBarRingsPerAccount: Bool {
+        didSet { defaults.set(menuBarRingsPerAccount, forKey: "menuBarRingsPerAccount") }
+    }
 
     // How much name each of those percentages carries — full, one letter, or none.
     @Published var menuBarLabelStyle: MenuBarLabelStyle {
@@ -50,6 +56,7 @@ final class Preferences: ObservableObject {
             "showMenuBarText": true,
             "menuBarMetrics": ["session"],
             "menuBarRings": ["session", "weekly_all"],   // exactly today's icon
+            "menuBarRingsPerAccount": true,
             "menuBarLabelStyle": MenuBarLabelStyle.full.rawValue,
             "showEndTimes": true,
             "showCodex": true,
@@ -59,6 +66,7 @@ final class Preferences: ObservableObject {
         ])
         // didSet does not fire during init, so these don't re-write the defaults.
         menuBarRings    = defaults.stringArray(forKey: "menuBarRings") ?? ["session", "weekly_all"]
+        menuBarRingsPerAccount = defaults.bool(forKey: "menuBarRingsPerAccount")
         refreshMinutes  = defaults.integer(forKey: "refreshMinutes")
         notifyAt80      = defaults.bool(forKey: "notifyAt80")
         notifyAt100     = defaults.bool(forKey: "notifyAt100")

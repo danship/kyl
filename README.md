@@ -40,6 +40,19 @@ Requires **macOS 13 (Ventura) or later**; several accounts at once need macOS 14
 - **Menu bar rings** — two concentric rings: outer is the current session, inner
   is the weekly cap. Each is colored **independently**, so a healthy session
   alongside a maxed-out week reads as neutral + red instead of both going red.
+  With several accounts, each gets its own rings, side by side, with the
+  account's color on the unfilled part, so the account with room is never
+  hidden behind the busy one; Preferences can combine them into one.
+- **How much of the window has passed** — a small notch cut across each ring,
+  in the menu bar and the popover, marks how far through its window that
+  limit is. A ring filled past its notch is quota being spent faster than time
+  is passing.
+- **No old numbers after a reset** — KYL checks again the moment a limit
+  resets. Until that check answers, the limit reads "…" with a faint ring,
+  since the number from before the reset is wrong.
+- **Waits for the network** — a check asked for while the Mac is offline, as
+  it usually is for a moment after waking, runs as soon as the network is
+  back, instead of failing and waiting minutes for the next one.
 - **Three color tiers** — blue (on pace) → orange (getting close) → red (over
   pace, or very high), so there's a heads-up rather than a jump straight to red.
 - **Pick what the menu bar counts** — the percentages beside the ring show the
@@ -180,6 +193,11 @@ account is needed — the project signs ad-hoc, so a clean checkout builds as-is
 2. Press **⌘R** to build and run.
 3. The first launch shows a sign-in window — log into claude.ai once. Your login
    is remembered after that.
+
+To run the tests, run `./scripts/test.sh`. It compiles the app's pure source
+files (the parser, the forecaster, the menu bar text and the ring drawing)
+together with `tests/` into one program and runs it, so the app itself never
+starts. It needs only the Xcode command line tools.
 
 To build a shareable copy, run `./package-release.sh`, which produces
 `KYL-<version>.zip` on your Desktop.

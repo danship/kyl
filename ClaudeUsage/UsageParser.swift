@@ -1,9 +1,9 @@
 import Foundation
 
 // Turns claude.ai's usage JSON into a WorkspaceUsage. Kept separate from the
-// web view so it's a pure function of its input — easy to reason about and to
-// self-test (see runSelfTest below). This is the piece most likely to break if
-// claude.ai changes its API shape, so it's isolated on purpose.
+// web view so it's a pure function of its input, which tests/ checks against
+// recorded answers. This is the piece most likely to break if claude.ai
+// changes its API shape, so it's isolated on purpose.
 enum UsageParser {
 
     static func parseUsage(_ usageDict: [String: Any]) -> WorkspaceUsage {
@@ -111,46 +111,4 @@ enum UsageParser {
         if let n = value as? NSNumber { return n.doubleValue }
         return nil
     }
-
-    // MARK: - Self-test
-
-    // Parses a sample of the real API shape and checks the numbers land where we
-    // expect. Runs once at launch in debug builds; if claude.ai changes its API,
-    // this logs a loud FAILED line so you know the parser needs updating — before
-    // you're staring at a blank popover wondering what broke.
-    #if DEBUG
-    static func runSelfTest() {
-        let sample = """
-        {"limits":[
-          {"kind":"session","percent":15,"resets_at":"2026-07-09T22:50:00.064762+00:00"},
-          {"kind":"weekly_all","percent":3,"resets_at":"2026-07-15T16:00:00.064787+00:00"},
-          {"kind":"weekly_scoped","percent":2,"resets_at":"2026-07-15T16:00:00.065150+00:00","scope":{"model":{"display_name":"Fable"}}}
-        ]}
-        """
-        guard let data = sample.data(using: .utf8),
-              let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            dlog("parser self-test FAILED ✗ — sample JSON did not parse")
-            return
-        }
-
-        let ws = parseUsage(dict)
-        var problems: [String] = []
-        if ws.session?.percent != 15 {
-            problems.append("session expected 15, got \(String(describing: ws.session?.percent))")
-        }
-        if ws.weeklyAll?.percent != 3 {
-            problems.append("weeklyAll expected 3, got \(String(describing: ws.weeklyAll?.percent))")
-        }
-        if ws.weeklyModels.first(where: { $0.label == "Fable" })?.percent != 2 {
-            problems.append("Fable per-model bar missing or wrong")
-        }
-
-        if problems.isEmpty {
-            dlog("parser self-test PASSED ✓")
-        } else {
-            dlog("parser self-test FAILED ✗ — \(problems.joined(separator: "; ")) "
-                 + "— claude.ai's API shape may have changed; update UsageParser.parseUsage.")
-        }
-    }
-    #endif
 }

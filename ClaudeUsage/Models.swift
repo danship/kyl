@@ -60,12 +60,15 @@ struct UsageMetric: Identifiable, Equatable {
         }
     }
 
-    // How this limit reads in the menu bar under a given label style.
-    func menuBarText(_ style: MenuBarLabelStyle) -> String {
+    // How this limit reads in the menu bar under a given label style. Once
+    // the limit has reset, the number read before it is wrong, so it reads
+    // "…" until the next check.
+    func menuBarText(_ style: MenuBarLabelStyle, at now: Date) -> String {
+        let number = hasReset(at: now) ? "…" : "\(percent)%"
         switch style {
-        case .full:    return "\(shortLabel) \(percent)%"
-        case .initial: return "\(initialLabel):\(percent)%"
-        case .off:     return "\(percent)%"
+        case .full:    return "\(shortLabel) \(number)"
+        case .initial: return "\(initialLabel):\(number)"
+        case .off:     return number
         }
     }
 }

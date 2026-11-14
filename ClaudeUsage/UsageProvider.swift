@@ -46,6 +46,9 @@ final class ClaudeProvider: UsageProvider {
     var onUsage: (([WorkspaceUsage]) -> Void)?
     var onNeedsLogin: (() -> Void)?
     var onError: ((String) -> Void)?
+    // A check could not reach claude.ai at all, which the view model holds
+    // for the network instead of showing as an error.
+    var onNetworkFailure: (() -> Void)?
 
     private var fetcher: UsageFetcher?
 
@@ -70,6 +73,9 @@ final class ClaudeProvider: UsageProvider {
         }
         fetcher.onError = { [weak self] message in
             DispatchQueue.main.async { self?.onError?(message) }
+        }
+        fetcher.onNetworkFailure = { [weak self] in
+            DispatchQueue.main.async { self?.onNetworkFailure?() }
         }
 
         self.fetcher = fetcher

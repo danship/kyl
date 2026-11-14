@@ -56,10 +56,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         reclaimOrphanedContainer()
 
         NSApp.setActivationPolicy(.accessory)
-        #if DEBUG
-        UsageParser.runSelfTest()
-        MenuBarTitle.runSelfTest()
-        #endif
         NotificationManager.shared.requestAuthorization()
         _ = UpdateController.shared     // starts Sparkle's scheduled check, if present
         AccountStore.shared.syncChromeColors()
@@ -136,6 +132,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateStatusBar() }
             .store(in: &cancellables)
+        Preferences.shared.$menuBarRings
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusBar() }
+            .store(in: &cancellables)
+        Preferences.shared.$menuBarRingsPerAccount
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusBar() }
+            .store(in: &cancellables)
+        // A sign-in starting or finishing dims or restores that account's glyph.
+        viewModel.$pendingLogins
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusBar() }
+            .store(in: &cancellables)
 
         // Open the sign-in window for whichever account needs one. With several
         // accounts they queue rather than fighting over a single window.
@@ -199,7 +208,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // number you still needed — degraded service doesn't stop you spending, and
     // that's precisely when you want to see where you stand.
     private func ringImage() -> NSImage {
-        ProgressRingImage.make(rings: viewModel.menuBarRings,
+        ProgressRingImage.make(glyphs: viewModel.menuBarGlyphs(),
                                status: viewModel.claudeStatus)
     }
 
@@ -420,99 +429,4 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 extension Notification.Name {
     // Posted by the popover's "Sign In" button to (re)open the login window.
     static let openLogin = Notification.Name("JuicageOpenLogin")
-}
-
-// MARK: - Menu bar text
-
-// Builds the text beside the ring from whichever limits you picked in
-// Preferences. Pure, so the self-test below can check it without a menu bar.
-enum MenuBarTitle {
-    static func make(workspaces: [WorkspaceUsage], keys: [String],
-                     labels: MenuBarLabelStyle, showEndTimes: Bool,
-                     now: Date = Date()) -> String {
-        guard !workspaces.isEmpty else { return " …" }
-        let selected = Set(keys)
-        // A label only earns its space once there's more than one number to
-        // tell apart — one limit reads fine as a bare percentage, as it always
-        // has. Past that it's a trade against menu bar width, which is what
-        // the style is for.
-        let style: MenuBarLabelStyle = selected.count > 1 ? labels : .off
-
-        var parts: [String] = []
-        for ws in workspaces {
-            let shown = ws.allMetrics.filter { selected.contains($0.key) }
-            if shown.isEmpty {
-                // Keep a placeholder so several accounts still line up left to right.
-                if workspaces.count > 1 { parts.append("—") }
-                continue
-            }
-            parts.append(contentsOf: shown.map { $0.menuBarText(style) })
-        }
-        guard !parts.isEmpty else { return "" }   // nothing picked → ring only
-
-        var title = " " + parts.joined(separator: style.separator)
-        // Only the session gets a countdown. A weekly cap resets days out, and
-        // "163h0m" next to a percentage isn't something anyone acts on.
-        if selected.contains("session"),
-           let reset = workspaces.compactMap({ $0.session })
-               .max(by: { $0.percent < $1.percent })?.resetAt,
-           reset.timeIntervalSince(now) > 0 {
-            title += " · " + (showEndTimes ? DateUtils.shortClock(reset)
-                                           : DateUtils.shortCountdown(to: reset, now: now))
-        }
-        return title
-    }
-
-    // MARK: - Self-test
-
-    // Checks the shapes that are easy to break: the default selection has to
-    // look exactly like it did before this setting existed, and adding limits
-    // must not start printing a weekly countdown. Debug builds only.
-    #if DEBUG
-    static func runSelfTest() {
-        let now = Date()
-        var ws = WorkspaceUsage()
-        ws.session = UsageMetric(key: "session", label: "Current Session",
-                                 percent: 42, resetAt: now.addingTimeInterval(3600))
-        ws.weeklyAll = UsageMetric(key: "weekly_all", label: "All Models", percent: 71)
-        ws.weeklyModels = [UsageMetric(key: "weekly_scoped:Fable", label: "Fable", percent: 12)]
-        var other = WorkspaceUsage()
-        other.session = UsageMetric(key: "session", label: "Current Session",
-                                    percent: 88, resetAt: now.addingTimeInterval(7200))
-
-        var problems: [String] = []
-        func check(_ what: String, _ keys: [String], _ list: [WorkspaceUsage], _ want: String,
-                   labels: MenuBarLabelStyle = .full) {
-            let got = make(workspaces: list, keys: keys, labels: labels,
-                           showEndTimes: false, now: now)
-            if got != want { problems.append("\(what): expected \"\(want)\", got \"\(got)\"") }
-        }
-
-        check("default (session only)", ["session"], [ws], " 42% · 1h0m")
-        check("session + week", ["session", "weekly_all"], [ws],
-              " Session 42% · Week 71% · 1h0m")
-        check("week + model, no countdown", ["weekly_all", "weekly_scoped:Fable"], [ws],
-              " Week 71% · Fable 12%")
-        // The two narrower styles, on the widest case they have to fix.
-        let all = ["session", "weekly_all", "weekly_scoped:Fable"]
-        check("all three, initials", all, [ws], " C:42% W:71% F:12% · 1h0m", labels: .initial)
-        check("all three, percent only", all, [ws], " 42% · 71% · 12% · 1h0m", labels: .off)
-        // One limit has nothing to disambiguate, so every style reads the same.
-        for style in MenuBarLabelStyle.allCases {
-            check("one limit, \(style.rawValue)", ["session"], [ws], " 42% · 1h0m", labels: style)
-        }
-        check("nothing selected", [], [ws], "")
-        check("limit the account doesn't have", ["weekly_scoped:Nope"], [ws], "")
-        // The countdown follows the busiest session — the one the ring reflects.
-        check("two accounts", ["session"], [ws, other], " 42% · 88% · 2h0m")
-        check("account missing the limit", ["weekly_all"], [ws, other], " 71% · —")
-        check("no data yet", ["session"], [], " …")
-
-        if problems.isEmpty {
-            dlog("menu bar title self-test PASSED ✓")
-        } else {
-            dlog("menu bar title self-test FAILED ✗ — \(problems.joined(separator: "; "))")
-        }
-    }
-    #endif
 }

@@ -68,6 +68,11 @@ struct SettingsView: View {
                     Text("Three is the most that stays readable at menu bar size.")
                         .font(.caption2).foregroundStyle(.secondary)
                 }
+                Toggle("Rings for each account", isOn: $prefs.menuBarRingsPerAccount)
+                Text(prefs.menuBarRingsPerAccount
+                     ? "Each account's rings sit side by side, its color on the track."
+                     : "One set of rings shows each limit at its fullest across accounts.")
+                    .font(.caption2).foregroundStyle(.secondary)
 
                 Divider()
 

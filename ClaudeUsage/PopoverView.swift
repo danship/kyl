@@ -132,6 +132,10 @@ struct PopoverView: View {
     }
 
     private var footerText: String {
+        if viewModel.isWaitingForNetwork {
+            return viewModel.lastUpdated == nil ? "Waiting for the network"
+                : "Waiting for the network — updated \(viewModel.lastUpdatedText)"
+        }
         if viewModel.lastUpdated == nil { return "Not yet loaded" }
         if viewModel.isStale { return "Stale — updated \(viewModel.lastUpdatedText)" }
         return "Updated \(viewModel.lastUpdatedText)"
@@ -268,14 +272,24 @@ struct RingTile: View {
     let selected: Bool
     let onSelect: () -> Void
 
+    // The fullest number, among limits that haven't reset since they were
+    // read; "…" while every limit has, until the next check answers.
+    private var middleText: String? {
+        let present = model.rings.compactMap { $0 }
+        guard !present.isEmpty else { return nil }
+        let current = present.filter { !$0.hasReset(at: Date()) }
+        guard let fullest = current.max(by: { $0.percent < $1.percent }) else { return "…" }
+        return "\(fullest.percent)%"
+    }
+
     var body: some View {
         let colour = model.swatch ?? .primary
         VStack(spacing: 6) {
             ConcentricRings(rings: model.rings, colour: colour)
                 .frame(width: 100, height: 100)
                 .overlay {
-                    if let fullest = model.rings.compactMap({ $0 }).max(by: { $0.percent < $1.percent }) {
-                        Text("\(fullest.percent)%")
+                    if let middle = middleText {
+                        Text(middle)
                             .font(.system(.subheadline, design: .rounded).weight(.semibold))
                             .monospacedDigit()
                     }
@@ -303,7 +317,10 @@ struct RingTile: View {
 // their places, and each ring inward is a little fainter so the three stay
 // apart in one colour. A limit getting close glows softly and one over pace
 // glows strongly, so the ring keeps the account's colour while saying how
-// close it is.
+// close it is. A notch cut across each ring marks how much of its window has
+// passed, so an arc running past its notch is quota spent faster than time.
+// A limit that has reset since it was read is drawn faintly, with no notch,
+// until the next check.
 struct ConcentricRings: View {
     let rings: [UsageMetric?]
     let colour: Color
@@ -314,10 +331,23 @@ struct ConcentricRings: View {
     private let gap: CGFloat = 3
 
     var body: some View {
-        ZStack {
-            ForEach(Array(rings.enumerated()), id: \.offset) { index, metric in
-                if let metric { ring(metric, at: CGFloat(index)) }
+        GeometryReader { geometry in
+            let now = Date()
+            ZStack {
+                ForEach(Array(rings.enumerated()), id: \.offset) { index, metric in
+                    if let metric {
+                        ring(metric, at: CGFloat(index), now: now)
+                        if !metric.hasReset(at: now), let elapsed = metric.elapsedFraction(at: now) {
+                            notch(at: elapsed, index: CGFloat(index), side: min(geometry.size.width,
+                                                                                  geometry.size.height))
+                        }
+                    }
+                }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            // The notches cut through the rings drawn beneath them, and
+            // nothing else.
+            .compositingGroup()
         }
         .onAppear {
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.9)) { shown = true }
@@ -326,10 +356,20 @@ struct ConcentricRings: View {
         .accessibilityLabel(rings.compactMap { $0 }.map { "\($0.label) \($0.percent) percent" }.joined(separator: ", "))
     }
 
-    private func ring(_ metric: UsageMetric, at index: CGFloat) -> some View {
+    private func notch(at elapsed: Double, index: CGFloat, side: CGFloat) -> some View {
+        let radius = side / 2 - index * (width + gap) - width / 2
+        return Rectangle()
+            .frame(width: 2, height: width + 2)
+            .offset(y: -radius)
+            .rotationEffect(.degrees(360 * elapsed))
+            .blendMode(.destinationOut)
+    }
+
+    private func ring(_ metric: UsageMetric, at index: CGFloat, now: Date) -> some View {
         let inset = index * (width + gap) + width / 2
         let fill = shown ? CGFloat(min(max(metric.percent, 0), 100)) / 100 : 0
-        let glow: Double = switch severity(percent: metric.percent, forecast: metric.forecast) {
+        let stale = metric.hasReset(at: now)
+        let glow: Double = switch stale ? .ok : severity(percent: metric.percent, forecast: metric.forecast) {
         case .ok: 0
         case .warn: 0.45
         case .danger: 0.9
@@ -346,7 +386,7 @@ struct ConcentricRings: View {
                     .opacity(glow)
             }
             Circle().inset(by: inset).trim(from: 0, to: fill)
-                .stroke(colour.opacity(1 - 0.19 * Double(index)),
+                .stroke(colour.opacity((1 - 0.19 * Double(index)) * (stale ? 0.3 : 1)),
                         style: StrokeStyle(lineWidth: width, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
@@ -558,14 +598,17 @@ struct UsageRowView: View {
     // Time left / reset time — always shown when we know it.
     private var resetLine: String? {
         guard let reset = metric.resetAt else { return nil }
+        // The number above was read before this reset, so it no longer holds.
+        if metric.hasReset(at: Date()) {
+            return "Reset at \(DateUtils.clockTime(reset)) · checking…"
+        }
         switch resetStyle {
         case .countdown:
             // A session window is a rolling five hours anchored to whenever it
             // opened, not a fixed clock — so when it opened is half the story,
             // and it's the half nobody can see. Start work an hour before a
             // window closes and you get an hour of it, not five.
-            let opened = reset.addingTimeInterval(-(metric.windowLength
-                                                     ?? UsageForecaster.windowLength(forKey: metric.key)))
+            let opened = reset.addingTimeInterval(-metric.window)
             if prefs.showEndTimes {
                 return "Opened \(DateUtils.clockTime(opened)) · resets \(DateUtils.clockTime(reset))"
             }
@@ -581,13 +624,14 @@ struct UsageRowView: View {
                 Text(metric.cardLabel == metric.shortLabel ? metric.label : metric.cardLabel)
                     .font(.subheadline).fontWeight(.medium)
                 Spacer()
-                Text("\(metric.percent)%")
+                Text(metric.hasReset(at: Date()) ? "…" : "\(metric.percent)%")
                     .font(.subheadline).fontWeight(.semibold)
                     .foregroundStyle(barColor)
                     .monospacedDigit()
             }
 
             UsageBar(percent: metric.percent, color: barColor, height: 6)
+                .opacity(metric.hasReset(at: Date()) ? 0.3 : 1)
 
             // Both lines wrap rather than truncate. Without fixedSize SwiftUI
             // compresses them to one line inside the fixed-width popover, and
